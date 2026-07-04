@@ -9,6 +9,7 @@ import { VendedoresModule } from './vendedores/vendedores.module';
 import { ClientesModule } from './clientes/clientes.module';
 import { AparelhosModule } from './aparelhos/aparelhos.module';
 import { PlanosModule } from './planos/planos.module';
+import { FinanceiroModule } from './financeiro/financeiro.module';
 import { HealthModule } from './health/health.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -30,6 +31,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     ClientesModule,
     AparelhosModule,
     PlanosModule,
+    FinanceiroModule,
     HealthModule,
   ],
   providers: [

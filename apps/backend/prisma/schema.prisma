@@ -73,6 +73,42 @@ enum VoucherStatus {
   EXPIRADO
 }
 
+// --- M12: Financeiro / comissões ---
+enum ModoPagamentoComissao {
+  SPLIT_INSTANTANEO
+  REPASSE_PROGRAMADO
+}
+
+enum ComissaoTipo {
+  LOJA
+  CORRETAGEM
+}
+
+enum ComissaoRegime {
+  ANTECIPADA
+  PRO_RATA
+}
+
+enum ComissaoStatus {
+  PREVISTA
+  CREDITADA
+  PARCIAL_ESTORNADA
+  ESTORNADA
+}
+
+enum LancamentoTipo {
+  CREDITO
+  DEBITO_CLAWBACK
+  AJUSTE
+}
+
+enum RepasseStatus {
+  ABERTO
+  PROCESSANDO
+  PAGO
+  FALHA
+}
+
 // ===========================================================================
 // M1 — CADASTROS BASE
 // ===========================================================================
@@ -101,6 +137,8 @@ model Loja {
   pixChave       String?
   asaasWalletId  String?
   comissaoPct    Decimal    @default(0.30) @db.Decimal(5, 4)
+  // M12: como as comissões desta loja são liquidadas.
+  modoPagamentoComissao ModoPagamentoComissao @default(SPLIT_INSTANTANEO)
   status         LojaStatus @default(ATIVA)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
@@ -111,6 +149,9 @@ model Loja {
   certificados  Certificado[]
   vistorias     Vistoria[]
   vouchersResgate Voucher[] @relation("VoucherLojaResgate")
+  comissoes     Comissao[]
+  contaCorrente ContaCorrenteLancamento[]
+  repasses      Repasse[]
 
   @@map("lojas")
 }
@@ -282,6 +323,7 @@ model Certificado {
   pagamentos Pagamento[]
   sinistros  Sinistro[]
   cobrancasLog CobrancaLog[]
+  comissoes  Comissao[]
 
   @@map("certificados")
 }
@@ -297,6 +339,8 @@ model Endosso {
   premioNovo      Decimal?    @db.Decimal(12, 2)
   pdfUrl          String?
   createdAt       DateTime    @default(now())
+
+  comissoes Comissao[]
 
   @@map("endossos")
 }
@@ -418,6 +462,70 @@ model Bordero {
   geradoEm     DateTime @default(now())
 
   @@map("borderos")
+}
+
+// ===========================================================================
+// M12 — FINANCEIRO: comissões, conta-corrente e clawback
+// ===========================================================================
+model Comissao {
+  id             String         @id @default(uuid())
+  lojaId         String
+  loja           Loja           @relation(fields: [lojaId], references: [id])
+  certificadoId  String?
+  certificado    Certificado?   @relation(fields: [certificadoId], references: [id])
+  endossoId      String?
+  endosso        Endosso?       @relation(fields: [endossoId], references: [id])
+  tipo           ComissaoTipo   @default(LOJA)
+  regime         ComissaoRegime
+  // valorBase = prêmio sobre o qual a comissão foi calculada; valorTotal = comissão cheia.
+  valorBase      Decimal        @db.Decimal(12, 2)
+  valorTotal     Decimal        @db.Decimal(12, 2)
+  parcelasTotais Int            @default(12)
+  parcelasPagas  Int            @default(0)
+  // valorEstornado acumula clawbacks já lançados sobre esta comissão.
+  valorEstornado Decimal        @default(0) @db.Decimal(12, 2)
+  status         ComissaoStatus @default(PREVISTA)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  lancamentos ContaCorrenteLancamento[]
+
+  @@index([lojaId])
+  @@map("comissoes")
+}
+
+model ContaCorrenteLancamento {
+  id             String         @id @default(uuid())
+  lojaId         String
+  loja           Loja           @relation(fields: [lojaId], references: [id])
+  tipo           LancamentoTipo
+  // valor SEMPRE positivo (magnitude); o sinal é dado por `tipo`. saldoApos = saldo resultante.
+  valor          Decimal        @db.Decimal(12, 2)
+  saldoApos      Decimal        @db.Decimal(12, 2)
+  referencia     String
+  comissaoId     String?
+  comissao       Comissao?      @relation(fields: [comissaoId], references: [id])
+  memoriaCalculo Json?
+  createdAt      DateTime       @default(now())
+
+  @@index([lojaId, createdAt])
+  @@map("conta_corrente_lancamentos")
+}
+
+model Repasse {
+  id              String        @id @default(uuid())
+  lote            String
+  lojaId          String
+  loja            Loja          @relation(fields: [lojaId], references: [id])
+  valorLiquido    Decimal       @db.Decimal(12, 2)
+  status          RepasseStatus @default(ABERTO)
+  comprovanteUrl  String?
+  referenciaInicio DateTime?
+  referenciaFim   DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@index([lojaId])
+  @@map("repasses")
 }
 
 // ===========================================================================
