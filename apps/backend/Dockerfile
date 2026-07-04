@@ -65,5 +65,6 @@ WORKDIR /app/apps/backend
 EXPOSE 3000
 
 # No start: aplica migrations pendentes e sobe a API.
-# Assim o deploy do Railway já roda `prisma migrate deploy` automaticamente.
-CMD ["sh", "-c", "node ../../node_modules/prisma/build/index.js migrate deploy && node dist/main.js"]
+# Usa `pnpm exec` para resolver o binário do Prisma pela estrutura de symlinks do pnpm
+# (caminho fixo em node_modules/prisma/build/index.js não existe no layout do pnpm).
+CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/main.js"]
