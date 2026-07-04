@@ -1,0 +1,41 @@
+# Arquivos que NÃO devem ir para o contexto de build Docker.
+# Mantém as imagens pequenas e os builds reproduzíveis.
+
+# Dependências (reinstaladas dentro da imagem)
+node_modules
+**/node_modules
+.pnpm-store
+
+# Saída de build
+dist
+build
+**/dist
+**/build
+.turbo
+**/.turbo
+*.tsbuildinfo
+
+# Git / CI
+.git
+.gitignore
+.github
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+
+# Testes / cobertura
+coverage
+**/coverage
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Docker / docs (não precisam no contexto)
+docker-compose.yml
+**/Dockerfile
+.dockerignore

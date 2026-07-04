@@ -1,0 +1,82 @@
+# CI — Proteção Solatium (monorepo pnpm + Turborepo)
+# Roda em push e em pull_request. Faz typecheck, lint, testes unitários
+# e testes e2e do backend contra um Postgres real (service container).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Variáveis usadas em vários steps. O host do Postgres é "localhost"
+# porque o service container publica a porta 5432 no runner.
+env:
+  DATABASE_URL: postgresql://solatium:solatium@localhost:5432/solatium?schema=public
+  JWT_SECRET: ci-test-jwt-secret-nao-use-em-producao
+  JWT_REFRESH_SECRET: ci-test-jwt-refresh-secret-nao-use-em-producao
+  NODE_ENV: test
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    # Banco de dados efêmero para os testes e2e / migrations.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: solatium
+          POSTGRES_PASSWORD: solatium
+          POSTGRES_DB: solatium
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U solatium"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # Instala dependências. O ideal é usar --frozen-lockfile (exige
+      # pnpm-lock.yaml commitado). Enquanto o lockfile não existir no repo,
+      # troque a linha abaixo por: pnpm install --no-frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Gera o Prisma Client antes de typecheck/testes (o código importa @prisma/client).
+      - name: Prisma generate
+        run: pnpm --filter @solatium/backend prisma:generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Testes unitários (backend)
+        run: pnpm --filter @solatium/backend test
+
+      # Aplica as migrations no Postgres do service e roda os testes e2e.
+      # Usa o DATABASE_URL global (aponta para o service postgres em localhost).
+      - name: Migrations + testes e2e (backend)
+        env:
+          DATABASE_URL: postgresql://solatium:solatium@localhost:5432/solatium?schema=public
+          JWT_SECRET: ci-test-jwt-secret-nao-use-em-producao
+          JWT_REFRESH_SECRET: ci-test-jwt-refresh-secret-nao-use-em-producao
+        run: |
+          pnpm --filter @solatium/backend prisma:migrate
+          pnpm --filter @solatium/backend test:e2e
