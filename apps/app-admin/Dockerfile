@@ -30,6 +30,8 @@ RUN pnpm install --no-frozen-lockfile
 COPY apps/app-admin apps/app-admin
 COPY packages/shared packages/shared
 
+# Compila o pacote shared antes (o Vite resolve @solatium/shared por ele).
+RUN pnpm --filter @solatium/shared build
 # Build (gera apps/app-admin/dist).
 RUN pnpm --filter @solatium/app-admin build
 

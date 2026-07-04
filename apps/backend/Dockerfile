@@ -38,7 +38,9 @@ RUN pnpm install --no-frozen-lockfile
 COPY apps/backend apps/backend
 COPY packages/shared packages/shared
 
-# 4) Gera o Prisma Client e compila o Nest (dist/).
+# 4) Compila o pacote shared (TS -> JS/CommonJS) para o runtime Node do backend,
+#    gera o Prisma Client e compila o Nest (dist/).
+RUN pnpm --filter @solatium/shared build
 RUN pnpm --filter @solatium/backend prisma:generate
 RUN pnpm --filter @solatium/backend build
 
