@@ -12,6 +12,7 @@ Plataforma white label onde a Solatium (estipulante + corretora) vende proteçã
 aparelho na loja e sai protegido na hora: vistoria → pagamento → certificado no WhatsApp.
 
 **Modelo jurídico:** apólice coletiva com seguradora parceira (risco na seguradora).
+
 - Solatium Proteção (CNPJ estipulante): dona da plataforma, marca, cliente, cobrança, sinistro.
 - Solatium Seguros (corretora SUSEP 221136609): corretagem.
 - Lojas: representantes de seguros (Res. CNSP 431/2021), comissão de 30%.
@@ -20,6 +21,7 @@ aparelho na loja e sai protegido na hora: vistoria → pagamento → certificado
 - Indenização de roubo/furto = voucher para compra na mesma loja (QR code validável).
 
 **Diferenciais competitivos:**
+
 1. Venda presencial no momento da compra do aparelho (500 pontos de venda).
 2. Vistoria antifraude presencial → sinistralidade baixa → profit share.
 3. Voucher na loja → aumenta LTV da loja → loja motivada a vender.
@@ -44,6 +46,7 @@ aparelho na loja e sai protegido na hora: vistoria → pagamento → certificado
 ## 3. MÓDULOS (ordem de prioridade)
 
 ### M1 — Cadastros base
+
 - Lojas (CNPJ, endereço, responsável, conta bancária p/ split Asaas, % comissão, status)
 - Vendedores por loja (login próprio — rastrear quem vendeu)
 - Clientes (CPF, nome, nascimento, telefone WhatsApp, email, endereço)
@@ -53,7 +56,9 @@ aparelho na loja e sai protegido na hora: vistoria → pagamento → certificado
   regras por faixa de valor do aparelho)
 
 ### M2 — Vistoria antifraude (bloqueante para emissão)
+
 Fluxo no app-loja, mobile-first, câmera nativa:
+
 1. Sistema gera **código dinâmico de 6 dígitos** com validade de 10 min
 2. Foto 1: tela do aparelho ligada exibindo o código (prova de funcionamento naquele momento)
 3. Foto 2: tela com `*#06#` mostrando IMEI (OCR do IMEI e comparação com o digitado)
@@ -65,6 +70,7 @@ Fluxo no app-loja, mobile-first, câmera nativa:
 8. Carência configurável pós-emissão (default 72h) para roubo/furto
 
 ### M3 — Emissão do certificado
+
 - Vistoria aprovada + pagamento confirmado (ou 1ª cobrança gerada) → emite certificado
 - Numeração sequencial própria + dados exigidos: seguradora, nº da apólice coletiva,
   processo SUSEP, estipulante, corretora, cliente, aparelho/IMEI, vigência 1 ano, coberturas,
@@ -73,6 +79,7 @@ Fluxo no app-loja, mobile-first, câmera nativa:
 - Página pública de validação: `/validar/{codigo}` (QR code no PDF)
 
 ### M4 — Pagamentos e split
+
 - Checkout na loja: Pix (prioridade — dinheiro na hora), cartão de crédito (mensal recorrente
   ou anual à vista/parcelado), boleto
 - Split automático Asaas: 30% loja, restante conta Solatium (percentual configurável por loja)
@@ -81,6 +88,7 @@ Fluxo no app-loja, mobile-first, câmera nativa:
 - Webhooks Asaas: PAYMENT_CONFIRMED, PAYMENT_OVERDUE, PAYMENT_REFUNDED → atualizar status
 
 ### M5 — Régua de cobrança (BullMQ + Digisac + Resend)
+
 - D-3: lembrete de vencimento (WhatsApp)
 - D0: cobrança com link de pagamento
 - D+3, D+7: reenvio com nova via
@@ -90,6 +98,7 @@ Fluxo no app-loja, mobile-first, câmera nativa:
 - Todos os envios logados (auditoria); templates versionados
 
 ### M6 — Sinistro + voucher
+
 - Abertura: pelo cliente via WhatsApp (integração futura com agente IA Sofia) ou pela loja/admin
 - Documentos: BO digital (obrigatório), relato, dados bancários NÃO necessários (indenização = voucher)
 - Esteira: ABERTO → DOCUMENTACAO_PENDENTE → EM_ANALISE → APROVADO / NEGADO
@@ -103,17 +112,20 @@ Fluxo no app-loja, mobile-first, câmera nativa:
   (conciliação no módulo financeiro)
 
 ### M7 — Endosso (troca de aparelho)
+
 - Cliente trocou de aparelho → nova vistoria do aparelho novo → substitui item no
   certificado → recalcula prêmio se faixa de valor mudou → gera endosso PDF → WhatsApp
 - Histórico completo de endossos por certificado
 
 ### M8 — Renovação automática
+
 - D-30 do fim de vigência: proposta de renovação por WhatsApp com link
 - Cartão recorrente: renova automático com aviso prévio (D-30 e D-10, opt-out claro)
 - Pix/boleto: cobrança de renovação; não pago até D0 → não renova, comunica fim de cobertura
 - Renovação pode exigir nova vistoria se configurado (default: não exige)
 
 ### M9 — Dashboards
+
 - **Loja:** vendas do mês, comissões a receber/recebidas, clientes ativos, ranking entre lojas,
   vouchers pendentes de resgate
 - **Admin Solatium:** vidas ativas, MRR, churn, inadimplência, sinistralidade global e POR LOJA
@@ -122,11 +134,13 @@ Fluxo no app-loja, mobile-first, câmera nativa:
   endossos, sinistros do mês) — automatizar geração no dia 1
 
 ### M10 — Comunicação em massa + indicação
+
 - Disparo segmentado via Digisac (filtros: loja, plano, status, cidade) com fila e rate limit
 - Programa de indicação: link único por cliente (`/i/{codigo}`), recompensa configurável
   (ex.: 1 mês grátis para indicador e indicado), tracking de conversão
 
 ### M11 — API pública (fase 2)
+
 - REST com API key por parceiro: criar cliente, iniciar vistoria, consultar certificado,
   webhook de eventos — para CRMs de terceiros e para o produto SaaS de agentes IA
 
@@ -135,7 +149,7 @@ Fluxo no app-loja, mobile-first, câmera nativa:
 lojas, vendedores, clientes, aparelhos, planos,
 vistorias (fotos jsonb, geolocalizacao, hash, status, motivo_reprova),
 certificados (numero, cliente_id, aparelho_id, plano_id, loja_id, vendedor_id,
-  vigencia_inicio, vigencia_fim, status: ATIVO|SUSPENSO|CANCELADO|EXPIRADO, pdf_url),
+vigencia_inicio, vigencia_fim, status: ATIVO|SUSPENSO|CANCELADO|EXPIRADO, pdf_url),
 endossos, pagamentos (asaas_id, tipo, status, valor, split jsonb),
 cobrancas_log, sinistros (status, bo_url, alertas_fraude jsonb),
 vouchers (codigo, qr, valor, validade, status: EMITIDO|RESGATADO|EXPIRADO, loja_resgate_id),
@@ -174,5 +188,13 @@ R2_ACCESS_KEY/SECRET/BUCKET, DATABASE_URL, REDIS_URL, JWT_SECRET, SEGURADORA_* (
 
 - [ ] Contrato seguradora: EM NEGOCIAÇÃO (Akad / ESSOR / Assurant)
 - [ ] CNPJ estipulante: A CONSTITUIR
-- [ ] Sprint atual: S0 (setup)
+- [x] **Sprint 1 (S1) — CONCLUÍDA**: monorepo (pnpm + Turborepo), backend NestJS + Prisma
+      (schema completo M1–M11 + migration inicial + índice parcial do IMEI), auth JWT + refresh +
+      argon2 com guards por papel, CRUDs do M1 (lojas, vendedores, clientes, aparelhos, planos,
+      usuarios), validação IMEI (Luhn) e CPF, interceptor de auditoria global, health check
+      (Postgres/Redis), Swagger em /docs, stubs de integração (Payment/Messaging/Storage), seed,
+      testes unitários (validadores) + e2e (auth), os dois frontends (app-loja PWA e app-admin),
+      CI (GitHub Actions), Dockerfiles + railway.json e DEPLOY.md. Gate verde: typecheck + lint +
+      testes + build.
+- [ ] Sprint atual: **S2** (vistoria antifraude M2 + upload R2 + validações IMEI)
 - Última atualização: 04/07/2026
