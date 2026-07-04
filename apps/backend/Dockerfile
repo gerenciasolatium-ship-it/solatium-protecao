@@ -25,6 +25,10 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* .npmrc* ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
+# 1b) O schema do Prisma precisa existir ANTES do install, porque o postinstall
+#     do backend roda `prisma generate` (que exige prisma/schema.prisma).
+COPY apps/backend/prisma apps/backend/prisma
+
 # 2) Instala dependências do workspace.
 #    Como ainda pode não haver lockfile commitado, usamos --no-frozen-lockfile.
 #    (Depois de commitar o pnpm-lock.yaml, pode trocar por --frozen-lockfile.)
