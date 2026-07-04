@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* -------------------------------------------------------------------------
+   Variáveis de marca Solatium — trocar aqui reflete em todo o app (via as
+   cores utilitárias `sol-azul` / `sol-verde` mapeadas no tailwind.config.js).
+   ------------------------------------------------------------------------- */
+:root {
+  /* Canais RGB (espaço-separados) — permitem opacidade nos utilitários Tailwind
+     (ex.: bg-sol-azul/90). Trocar aqui reflete em todo o app. */
+  --sol-azul: 11 37 69; /* #0B2545 */
+  --sol-verde: 22 163 74; /* #16A34A */
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  /* respeita a "safe area" de aparelhos com notch quando instalado como PWA */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+@layer components {
+  /* Botões grandes, mobile-first, pensados para uso com uma mão. */
+  .btn {
+    @apply inline-flex min-h-[3.25rem] w-full items-center justify-center gap-2
+      rounded-2xl px-5 text-base font-semibold transition
+      active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply btn bg-sol-azul text-white active:bg-sol-azul/90;
+  }
+  .btn-verde {
+    @apply btn bg-sol-verde text-white active:bg-sol-verde/90;
+  }
+  .btn-secundario {
+    @apply btn border-2 border-sol-azul bg-white text-sol-azul active:bg-slate-100;
+  }
+  .campo {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base
+      outline-none placeholder:text-slate-400 focus:border-sol-azul
+      focus:ring-2 focus:ring-sol-azul/20;
+  }
+  .rotulo {
+    @apply mb-1 block text-sm font-medium text-slate-700;
+  }
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white p-4 shadow-sm;
+  }
+}

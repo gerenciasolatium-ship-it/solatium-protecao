@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Variáveis de marca Proteção Solatium — canais RGB (permitem opacidade
+     nos utilitários Tailwind, ex.: bg-sol-azul/90). */
+  --sol-azul: 11 37 69; /* #0B2545 */
+  --sol-verde: 22 163 74; /* #16A34A */
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: #f1f5f9;
+  color: #0f172a;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+}

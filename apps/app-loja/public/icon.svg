@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Proteção Solatium">
+  <rect width="512" height="512" rx="96" fill="#0B2545" />
+  <path
+    d="M256 72 128 128v112c0 88 55 166 128 200 73-34 128-112 128-200V128L256 72Z"
+    fill="#16A34A"
+  />
+  <path
+    d="M212 258l32 32 60-64"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="26"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
