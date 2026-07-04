@@ -1,0 +1,440 @@
+// Proteção Solatium — schema completo (CLAUDE.md seção 4).
+// Nesta Sprint 1 só os cadastros base (M1) têm CRUD; as demais tabelas já
+// existem para não quebrar migrations nas próximas sprints.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// ENUMS
+// ===========================================================================
+enum Role {
+  ADMIN
+  OPERADOR
+  LOJA_ADMIN
+  LOJA_VENDEDOR
+}
+
+enum LojaStatus {
+  ATIVA
+  INATIVA
+  EM_REVISAO
+}
+
+enum PlanoPeriodicidade {
+  MENSAL
+  ANUAL
+}
+
+enum VistoriaStatus {
+  PENDENTE
+  APROVADA
+  EM_ANALISE
+  REPROVADA
+}
+
+enum CertificadoStatus {
+  ATIVO
+  SUSPENSO
+  CANCELADO
+  EXPIRADO
+}
+
+enum PagamentoTipo {
+  PIX
+  CARTAO
+  BOLETO
+}
+
+enum PagamentoStatus {
+  PENDENTE
+  CONFIRMADO
+  VENCIDO
+  ESTORNADO
+}
+
+enum SinistroStatus {
+  ABERTO
+  DOCUMENTACAO_PENDENTE
+  EM_ANALISE
+  APROVADO
+  NEGADO
+}
+
+enum VoucherStatus {
+  EMITIDO
+  RESGATADO
+  EXPIRADO
+}
+
+// ===========================================================================
+// M1 — CADASTROS BASE
+// ===========================================================================
+model Loja {
+  id             String     @id @default(uuid())
+  nome           String
+  cnpj           String     @unique
+  email          String?
+  telefone       String?
+  responsavelNome String?
+  // Endereço
+  cep            String?
+  logradouro     String?
+  numero         String?
+  complemento    String?
+  bairro         String?
+  cidade         String?
+  uf             String?
+  latitude       Float?
+  longitude      Float?
+  // Conta bancária p/ split Asaas (S3)
+  bancoNome      String?
+  bancoAgencia   String?
+  bancoConta     String?
+  bancoTipoConta String?
+  pixChave       String?
+  asaasWalletId  String?
+  comissaoPct    Decimal    @default(0.30) @db.Decimal(5, 4)
+  status         LojaStatus @default(ATIVA)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  usuarios      Usuario[]
+  vendedores    Vendedor[]
+  clientesOrigem Cliente[]
+  certificados  Certificado[]
+  vistorias     Vistoria[]
+  vouchersResgate Voucher[] @relation("VoucherLojaResgate")
+
+  @@map("lojas")
+}
+
+model Usuario {
+  id              String    @id @default(uuid())
+  nome            String
+  email           String    @unique
+  senhaHash       String
+  role            Role
+  ativo           Boolean   @default(true)
+  refreshTokenHash String?
+  lojaId          String?
+  loja            Loja?     @relation(fields: [lojaId], references: [id])
+  vendedor        Vendedor?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@map("usuarios")
+}
+
+model Vendedor {
+  id        String   @id @default(uuid())
+  nome      String
+  cpf       String   @unique
+  telefone  String?
+  email     String?
+  ativo     Boolean  @default(true)
+  lojaId    String
+  loja      Loja     @relation(fields: [lojaId], references: [id])
+  // Login próprio: 1-1 com Usuario (role LOJA_VENDEDOR)
+  usuarioId String?  @unique
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  certificados Certificado[]
+  vistorias    Vistoria[]
+
+  @@map("vendedores")
+}
+
+model Cliente {
+  id               String   @id @default(uuid())
+  nome             String
+  cpf              String   @unique
+  nascimento       DateTime?
+  telefoneWhatsapp String
+  email            String?
+  cep              String?
+  logradouro       String?
+  numero           String?
+  complemento      String?
+  bairro           String?
+  cidade           String?
+  uf               String?
+  lojaOrigemId     String?
+  lojaOrigem       Loja?    @relation(fields: [lojaOrigemId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  aparelhos    Aparelho[]
+  certificados Certificado[]
+  pagamentos   Pagamento[]
+  sinistros    Sinistro[]
+  vistorias    Vistoria[]
+  indicacoesFeitas Indicacao[] @relation("IndicacaoIndicador")
+  indicacoesRecebidas Indicacao[] @relation("IndicacaoIndicado")
+
+  @@map("clientes")
+}
+
+model Aparelho {
+  id            String   @id @default(uuid())
+  marca         String
+  modelo        String
+  imei          String   @unique
+  valorMercado  Decimal  @db.Decimal(12, 2)
+  notaFiscalUrl String?
+  clienteId     String
+  cliente       Cliente  @relation(fields: [clienteId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  certificados Certificado[]
+  vistorias    Vistoria[]
+
+  @@map("aparelhos")
+}
+
+model Plano {
+  id              String             @id @default(uuid())
+  nome            String
+  descricao       String?
+  periodicidade   PlanoPeriodicidade @default(MENSAL)
+  premioMensal    Decimal?           @db.Decimal(12, 2)
+  premioAnual     Decimal?           @db.Decimal(12, 2)
+  franquia        Decimal            @default(0) @db.Decimal(12, 2)
+  capitalSegurado Decimal            @db.Decimal(12, 2)
+  valorAparelhoMin Decimal?          @db.Decimal(12, 2)
+  valorAparelhoMax Decimal?          @db.Decimal(12, 2)
+  ativo           Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  certificados Certificado[]
+
+  @@map("planos")
+}
+
+// ===========================================================================
+// M2 — VISTORIA
+// ===========================================================================
+model Vistoria {
+  id                String         @id @default(uuid())
+  aparelhoId        String
+  aparelho          Aparelho       @relation(fields: [aparelhoId], references: [id])
+  clienteId         String
+  cliente           Cliente        @relation(fields: [clienteId], references: [id])
+  vendedorId        String
+  vendedor          Vendedor       @relation(fields: [vendedorId], references: [id])
+  lojaId            String
+  loja              Loja           @relation(fields: [lojaId], references: [id])
+  codigoDinamico    String
+  codigoExpiraEm    DateTime
+  fotos             Json?          // [{ tipo, url, hashSha256 }]
+  geolocalizacao    Json?          // { lat, lng, precisao }
+  deviceFingerprint String?
+  status            VistoriaStatus @default(PENDENTE)
+  motivoReprova     String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  certificado Certificado?
+
+  @@map("vistorias")
+}
+
+// ===========================================================================
+// M3 — CERTIFICADO / M7 — ENDOSSO
+// ===========================================================================
+model Certificado {
+  id             String            @id @default(uuid())
+  numero         String            @unique
+  codigoValidacao String           @unique @default(uuid())
+  clienteId      String
+  cliente        Cliente           @relation(fields: [clienteId], references: [id])
+  aparelhoId     String
+  aparelho       Aparelho          @relation(fields: [aparelhoId], references: [id])
+  planoId        String
+  plano          Plano             @relation(fields: [planoId], references: [id])
+  lojaId         String
+  loja           Loja              @relation(fields: [lojaId], references: [id])
+  vendedorId     String
+  vendedor       Vendedor          @relation(fields: [vendedorId], references: [id])
+  vistoriaId     String?           @unique
+  vistoria       Vistoria?         @relation(fields: [vistoriaId], references: [id])
+  vigenciaInicio DateTime
+  vigenciaFim    DateTime
+  carenciaAte    DateTime?
+  status         CertificadoStatus @default(ATIVO)
+  pdfUrl         String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  endossos   Endosso[]
+  pagamentos Pagamento[]
+  sinistros  Sinistro[]
+  cobrancasLog CobrancaLog[]
+
+  @@map("certificados")
+}
+
+model Endosso {
+  id              String      @id @default(uuid())
+  certificadoId   String
+  certificado     Certificado @relation(fields: [certificadoId], references: [id])
+  aparelhoAnteriorId String?
+  aparelhoNovoId  String?
+  motivo          String?
+  premioAnterior  Decimal?    @db.Decimal(12, 2)
+  premioNovo      Decimal?    @db.Decimal(12, 2)
+  pdfUrl          String?
+  createdAt       DateTime    @default(now())
+
+  @@map("endossos")
+}
+
+// ===========================================================================
+// M4 — PAGAMENTOS / M5 — COBRANÇA
+// ===========================================================================
+model Pagamento {
+  id            String          @id @default(uuid())
+  clienteId     String
+  cliente       Cliente         @relation(fields: [clienteId], references: [id])
+  certificadoId String?
+  certificado   Certificado?    @relation(fields: [certificadoId], references: [id])
+  asaasId       String?
+  tipo          PagamentoTipo
+  status        PagamentoStatus @default(PENDENTE)
+  valor         Decimal         @db.Decimal(12, 2)
+  split         Json?
+  vencimento    DateTime?
+  pagoEm        DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  cobrancasLog CobrancaLog[]
+
+  @@map("pagamentos")
+}
+
+model CobrancaLog {
+  id            String       @id @default(uuid())
+  pagamentoId   String?
+  pagamento     Pagamento?   @relation(fields: [pagamentoId], references: [id])
+  certificadoId String?
+  certificado   Certificado? @relation(fields: [certificadoId], references: [id])
+  canal         String       // WHATSAPP | EMAIL
+  template      String
+  etapa         String       // D-3 | D0 | D+3 | D+7 | D+15 | D+30
+  payload       Json?
+  enviadoEm     DateTime     @default(now())
+
+  @@map("cobrancas_log")
+}
+
+// ===========================================================================
+// M6 — SINISTRO / VOUCHER
+// ===========================================================================
+model Sinistro {
+  id                String         @id @default(uuid())
+  certificadoId     String
+  certificado       Certificado    @relation(fields: [certificadoId], references: [id])
+  clienteId         String
+  cliente           Cliente        @relation(fields: [clienteId], references: [id])
+  status            SinistroStatus @default(ABERTO)
+  boUrl             String?
+  relato            String?
+  alertasFraude     Json?
+  valorIndenizacao  Decimal?       @db.Decimal(12, 2)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  voucher Voucher?
+
+  @@map("sinistros")
+}
+
+model Voucher {
+  id            String        @id @default(uuid())
+  codigo        String        @unique
+  sinistroId    String        @unique
+  sinistro      Sinistro      @relation(fields: [sinistroId], references: [id])
+  qr            String?
+  valor         Decimal       @db.Decimal(12, 2)
+  validade      DateTime
+  status        VoucherStatus @default(EMITIDO)
+  lojaResgateId String?
+  lojaResgate   Loja?         @relation("VoucherLojaResgate", fields: [lojaResgateId], references: [id])
+  resgatadoEm   DateTime?
+  createdAt     DateTime      @default(now())
+
+  @@map("vouchers")
+}
+
+// ===========================================================================
+// M10 — INDICAÇÃO / COMUNICAÇÃO
+// ===========================================================================
+model Indicacao {
+  id                String    @id @default(uuid())
+  codigo            String    @unique
+  clienteIndicadorId String
+  clienteIndicador  Cliente   @relation("IndicacaoIndicador", fields: [clienteIndicadorId], references: [id])
+  clienteIndicadoId String?
+  clienteIndicado   Cliente?  @relation("IndicacaoIndicado", fields: [clienteIndicadoId], references: [id])
+  recompensa        String?
+  convertidoEm      DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@map("indicacoes")
+}
+
+model NotificacaoLog {
+  id        String   @id @default(uuid())
+  canal     String   // WHATSAPP | EMAIL | SMS
+  template  String
+  status    String   // ENVIADO | FALHA
+  payload   Json?
+  enviadoEm DateTime @default(now())
+
+  @@map("notificacoes_log")
+}
+
+// ===========================================================================
+// M9 — BORDERÔ
+// ===========================================================================
+model Bordero {
+  id           String   @id @default(uuid())
+  referenciaMes String  // YYYY-MM
+  dados        Json
+  arquivoUrl   String?
+  geradoEm     DateTime @default(now())
+
+  @@map("borderos")
+}
+
+// ===========================================================================
+// AUDITORIA (global)
+// ===========================================================================
+model AuditLog {
+  id         String   @id @default(uuid())
+  usuarioId  String?
+  usuario    Usuario? @relation(fields: [usuarioId], references: [id])
+  acao       String   // CREATE | UPDATE | DELETE
+  entidade   String
+  entidadeId String?
+  antes      Json?
+  depois     Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+  @@map("audit_log")
+}
