@@ -52,6 +52,21 @@ enum PagamentoTipo {
   BOLETO
 }
 
+// Forma contratada no checkout (S3). CARTAO_RECORRENTE = assinatura mensal;
+// CARTAO_ANUAL = anual à vista ou parcelado no cartão.
+enum FormaPagamento {
+  PIX
+  CARTAO_RECORRENTE
+  CARTAO_ANUAL
+  BOLETO
+}
+
+enum ContratoStatus {
+  AGUARDANDO_PAGAMENTO
+  ATIVO
+  CANCELADO
+}
+
 enum PagamentoStatus {
   PENDENTE
   CONFIRMADO
@@ -149,6 +164,7 @@ model Loja {
   certificados  Certificado[]
   vistorias     Vistoria[]
   vouchersResgate Voucher[] @relation("VoucherLojaResgate")
+  contratos     Contrato[]
   comissoes     Comissao[]
   contaCorrente ContaCorrenteLancamento[]
   repasses      Repasse[]
@@ -192,6 +208,7 @@ model Vendedor {
 
   certificados Certificado[]
   vistorias    Vistoria[]
+  contratos    Contrato[]
 
   @@map("vendedores")
 }
@@ -212,6 +229,7 @@ model Cliente {
   uf               String?
   lojaOrigemId     String?
   lojaOrigem       Loja?    @relation(fields: [lojaOrigemId], references: [id])
+  asaasCustomerId  String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -220,6 +238,7 @@ model Cliente {
   pagamentos   Pagamento[]
   sinistros    Sinistro[]
   vistorias    Vistoria[]
+  contratos    Contrato[]
   indicacoesFeitas Indicacao[] @relation("IndicacaoIndicador")
   indicacoesRecebidas Indicacao[] @relation("IndicacaoIndicado")
 
@@ -230,6 +249,9 @@ model Aparelho {
   id            String   @id @default(uuid())
   marca         String
   modelo        String
+  // Obrigatório no cadastro (DTO); default 0 só para linhas pré-S3.
+  armazenamentoGb Int    @default(0)
+  cor           String?
   imei          String   @unique
   valorMercado  Decimal  @db.Decimal(12, 2)
   notaFiscalUrl String?
@@ -240,6 +262,7 @@ model Aparelho {
 
   certificados Certificado[]
   vistorias    Vistoria[]
+  contratos    Contrato[]
 
   @@map("aparelhos")
 }
@@ -252,6 +275,8 @@ model Plano {
   premioMensal    Decimal?           @db.Decimal(12, 2)
   premioAnual     Decimal?           @db.Decimal(12, 2)
   franquia        Decimal            @default(0) @db.Decimal(12, 2)
+  // Fonte única da franquia (M3 PDF + M6 voucher): % do capital segurado.
+  franquiaPercentual Decimal         @default(25) @db.Decimal(5, 2)
   capitalSegurado Decimal            @db.Decimal(12, 2)
   valorAparelhoMin Decimal?          @db.Decimal(12, 2)
   valorAparelhoMax Decimal?          @db.Decimal(12, 2)
@@ -260,8 +285,28 @@ model Plano {
   updatedAt       DateTime           @updatedAt
 
   certificados Certificado[]
+  contratos    Contrato[]
 
   @@map("planos")
+}
+
+// Catálogo de referência de modelos (não é o aparelho do cliente — ver Aparelho).
+// valorReferencia alimenta o capital segurado sugerido; protecaoMensal/Anual são
+// os preços de venda da proteção definidos pelo admin (null = ainda não precificado).
+model ModeloAparelho {
+  id              String   @id @default(uuid())
+  marca           String
+  modelo          String
+  armazenamentoGb Int
+  valorReferencia Decimal  @db.Decimal(12, 2)
+  protecaoMensal  Decimal? @db.Decimal(12, 2)
+  protecaoAnual   Decimal? @db.Decimal(12, 2)
+  ativo           Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([marca, modelo, armazenamentoGb])
+  @@map("modelos_aparelho")
 }
 
 // ===========================================================================
@@ -288,8 +333,50 @@ model Vistoria {
   updatedAt         DateTime       @updatedAt
 
   certificado Certificado?
+  contrato    Contrato?
 
   @@map("vistorias")
+}
+
+// ===========================================================================
+// M4 — CONTRATO (venda no balcão: vistoria aprovada → cobrança → certificado)
+// ===========================================================================
+model Contrato {
+  id             String         @id @default(uuid())
+  vistoriaId     String         @unique
+  vistoria       Vistoria       @relation(fields: [vistoriaId], references: [id])
+  clienteId      String
+  cliente        Cliente        @relation(fields: [clienteId], references: [id])
+  aparelhoId     String
+  aparelho       Aparelho       @relation(fields: [aparelhoId], references: [id])
+  planoId        String
+  plano          Plano          @relation(fields: [planoId], references: [id])
+  lojaId         String
+  loja           Loja           @relation(fields: [lojaId], references: [id])
+  vendedorId     String
+  vendedor       Vendedor       @relation(fields: [vendedorId], references: [id])
+  formaPagamento FormaPagamento
+  parcelas       Int            @default(1)
+  // Prêmio total contratado (mensal = 12x premioMensal; anual = premioAnual).
+  premioTotal    Decimal        @db.Decimal(12, 2)
+  // Dados da cobrança corrente pro balcão: QR Pix, copia-e-cola, link, boleto.
+  checkout       Json?
+  status         ContratoStatus @default(AGUARDANDO_PAGAMENTO)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  pagamentos  Pagamento[]
+  certificado Certificado?
+
+  @@map("contratos")
+}
+
+// Série própria de numeração do bilhete: PS-AAAA-000001 (uma linha por ano).
+model CertificadoSerie {
+  ano     Int @id
+  proximo Int @default(1)
+
+  @@map("certificado_series")
 }
 
 // ===========================================================================
@@ -311,11 +398,17 @@ model Certificado {
   vendedor       Vendedor          @relation(fields: [vendedorId], references: [id])
   vistoriaId     String?           @unique
   vistoria       Vistoria?         @relation(fields: [vistoriaId], references: [id])
+  // Idempotência da emissão automática: 1 contrato → no máximo 1 certificado.
+  contratoId     String?           @unique
+  contrato       Contrato?         @relation(fields: [contratoId], references: [id])
+  formaPagamento FormaPagamento?
   vigenciaInicio DateTime
   vigenciaFim    DateTime
   carenciaAte    DateTime?
   status         CertificadoStatus @default(ATIVO)
   pdfUrl         String?
+  whatsappEnviadoEm DateTime?
+  emailEnviadoEm    DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
@@ -354,7 +447,11 @@ model Pagamento {
   cliente       Cliente         @relation(fields: [clienteId], references: [id])
   certificadoId String?
   certificado   Certificado?    @relation(fields: [certificadoId], references: [id])
-  asaasId       String?
+  contratoId    String?
+  contrato      Contrato?       @relation(fields: [contratoId], references: [id])
+  asaasId       String?         @unique
+  // 1ª cobrança do contrato: a confirmação dela dispara a emissão (M3).
+  primeiraCobranca Boolean      @default(false)
   tipo          PagamentoTipo
   status        PagamentoStatus @default(PENDENTE)
   valor         Decimal         @db.Decimal(12, 2)

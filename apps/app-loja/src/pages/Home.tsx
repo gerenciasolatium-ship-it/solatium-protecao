@@ -57,9 +57,7 @@ export function Home() {
             descricao="Vistoria + emissão do certificado"
             emoji="🛡️"
             variante="verde"
-            onClick={() =>
-              window.alert('Fluxo de Nova Proteção (vistoria e pagamento) chega em breve.')
-            }
+            onClick={() => navigate('/protecao/nova')}
           />
           <Atalho
             titulo="Meus Clientes"

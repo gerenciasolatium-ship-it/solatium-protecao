@@ -37,6 +37,8 @@ export function NovoCliente() {
   // Dados do aparelho
   const [marca, setMarca] = useState('');
   const [modelo, setModelo] = useState('');
+  const [armazenamento, setArmazenamento] = useState('');
+  const [cor, setCor] = useState('');
   const [imei, setImei] = useState('');
   const [valor, setValor] = useState('');
 
@@ -61,6 +63,8 @@ export function NovoCliente() {
     if (cpfDigitos.length !== 11) locais.push('CPF deve ter 11 dígitos.');
     if (telDigitos.length < 10) locais.push('Telefone (WhatsApp) inválido.');
     if (!imeiOk) locais.push('IMEI inválido (15 dígitos + dígito verificador).');
+    const gb = Number(armazenamento);
+    if (!Number.isInteger(gb) || gb <= 0) locais.push('Informe o armazenamento em GB.');
     if (!Number.isFinite(valorNum) || valorNum <= 0)
       locais.push('Informe o valor de mercado do aparelho.');
     if (locais.length) {
@@ -88,6 +92,8 @@ export function NovoCliente() {
         body: {
           marca: marca.trim(),
           modelo: modelo.trim(),
+          armazenamentoGb: Number(armazenamento),
+          cor: cor.trim() || undefined,
           imei: imeiDigitos,
           valorMercado: valorNum,
           clienteId: cliente.id,
@@ -216,6 +222,35 @@ export function NovoCliente() {
                   placeholder="iPhone 13"
                   value={modelo}
                   onChange={(e) => setModelo(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="mb-3 grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="gb" className="rotulo">
+                  Armazenamento (GB)
+                </label>
+                <input
+                  id="gb"
+                  className="campo"
+                  required
+                  inputMode="numeric"
+                  placeholder="128"
+                  value={armazenamento}
+                  onChange={(e) => setArmazenamento(e.target.value.replace(/\D/g, ''))}
+                />
+              </div>
+              <div>
+                <label htmlFor="cor" className="rotulo">
+                  Cor <span className="font-normal text-slate-400">(opcional)</span>
+                </label>
+                <input
+                  id="cor"
+                  className="campo"
+                  placeholder="Azul"
+                  value={cor}
+                  onChange={(e) => setCor(e.target.value)}
                 />
               </div>
             </div>

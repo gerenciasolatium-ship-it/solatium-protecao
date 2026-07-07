@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsString, IsUUID, Length, Min } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Min } from 'class-validator';
 import { IsImei } from '../../common/validators/decorators';
 
 export class CreateAparelhoDto {
@@ -12,6 +12,20 @@ export class CreateAparelhoDto {
   @IsString()
   @Length(1, 80)
   modelo!: string;
+
+  @ApiProperty({
+    example: 128,
+    description: 'Capacidade de armazenamento em GB (obrigatório — sai no bilhete).',
+  })
+  @IsInt()
+  @Min(1)
+  armazenamentoGb!: number;
+
+  @ApiPropertyOptional({ example: 'Azul' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 40)
+  cor?: string;
 
   @ApiProperty({ example: '490154203237518', description: 'IMEI (15 dígitos, validado por Luhn).' })
   @IsImei()

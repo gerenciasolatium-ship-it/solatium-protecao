@@ -69,23 +69,78 @@ Fluxo no app-loja, mobile-first, câmera nativa:
 7. Status: PENDENTE → APROVADA (auto se todas as regras passam) / EM_ANALISE / REPROVADA
 8. Carência configurável pós-emissão (default 72h) para roubo/furto
 
-### M3 — Emissão do certificado
+### M3 — Emissão do certificado (spec fechada — sprint S3)
 
-- Vistoria aprovada + pagamento confirmado (ou 1ª cobrança gerada) → emite certificado
-- Numeração sequencial própria + dados exigidos: seguradora, nº da apólice coletiva,
-  processo SUSEP, estipulante, corretora, cliente, aparelho/IMEI, vigência 1 ano, coberturas,
-  exclusões resumidas, canal de sinistro
-- PDF com marca Proteção Solatium → enviado por WhatsApp (Digisac) e email na hora
-- Página pública de validação: `/validar/{codigo}` (QR code no PDF)
+**Regra de ouro:** confirmada a PRIMEIRA cobrança do contrato, o sistema emite o
+certificado/bilhete em PDF e entrega no WhatsApp e email do cliente SEM nenhuma ação humana.
 
-### M4 — Pagamentos e split
+**Job `emitir-certificado` (BullMQ, retry + idempotência):**
 
-- Checkout na loja: Pix (prioridade — dinheiro na hora), cartão de crédito (mensal recorrente
-  ou anual à vista/parcelado), boleto
-- Split automático Asaas: 30% loja, restante conta Solatium (percentual configurável por loja)
-- Regra de ouro: **não perder venda** — se cartão falhar, oferecer Pix; se Pix não pago em
-  30 min, gerar boleto e enviar por WhatsApp
-- Webhooks Asaas: PAYMENT_CONFIRMED, PAYMENT_OVERDUE, PAYMENT_REFUNDED → atualizar status
+- Disparado pelo webhook Asaas (`PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED` da 1ª cobrança).
+- Idempotente: NUNCA emitir duas vezes para o mesmo contrato (chave = pagamento/contrato;
+  webhook duplicado não gera segundo certificado).
+- Gera número sequencial em série própria: `PS-AAAA-000001` (AAAA = ano da emissão).
+- Vigência: início = data/hora da confirmação do pagamento; fim = início + 1 ano.
+  Carência de 72h para roubo/furto a partir do início (herdada da vistoria/config).
+- Renderiza o PDF (template abaixo), salva no R2, grava `pdf_url` no certificado.
+- Envia na hora por WhatsApp (Digisac — mensagem + PDF anexo) e email (Resend).
+- Status do certificado: ATIVO; `audit_log` completo de cada passo.
+- Registra comissão da loja via gancho `registrarComissaoEmissao` (M12).
+
+**TEMPLATE DO BILHETE (PDF 1 página, marca Proteção Solatium):**
+
+1. Cabeçalho: logo/nome PROTEÇÃO SOLATIUM + "Certificado Individual de Seguro" +
+   número do certificado + QR code apontando para `/validar/{codigo}`.
+2. Bloco SEGURADO: nome completo, CPF, data de nascimento, telefone/WhatsApp, email,
+   endereço completo.
+3. Bloco APARELHO SEGURADO: marca, modelo, capacidade de armazenamento (GB — campo
+   obrigatório no cadastro de aparelho), cor, IMEI, valor de referência (capital segurado),
+   data e nº da vistoria aprovada.
+4. Bloco VIGÊNCIA: início e fim (1 ano), carência de 72h para roubo/furto destacada,
+   forma de pagamento contratada.
+5. Bloco COBERTURA E FRANQUIA (destaque visual — caixa):
+   - Cobertura: roubo e furto qualificado do aparelho segurado.
+   - Indenização: voucher para aquisição de outro aparelho na loja parceira de origem.
+   - FRANQUIA: 25% do valor de referência, deduzida da indenização.
+   - Exemplo CALCULADO com os números do próprio cliente: "Aparelho segurado: R$ {valor}.
+     Em caso de sinistro coberto, seu voucher será de R$ {valor×0,75} (indenização) e sua
+     participação (franquia) será de R$ {valor×0,25}."
+   - Como acionar: canal de sinistro (WhatsApp oficial) + necessidade de B.O.
+   - Principais exclusões resumidas (furto simples sem vestígios se não coberto, quebra,
+     perda, esquecimento — conforme condições gerais).
+6. Rodapé legal (placeholders via env): Seguradora {SEGURADORA_NOME} — CNPJ
+   {SEGURADORA_CNPJ} — Apólice coletiva nº {APOLICE_NUMERO} — Processo SUSEP
+   {PROCESSO_SUSEP}; Estipulante {ESTIPULANTE_RAZAO} — CNPJ {ESTIPULANTE_CNPJ};
+   Corretora Solatium Seguros — SUSEP 221136609 — CNPJ {SOLATIUM_CNPJ}; Loja parceira
+   (representante): razão social + CNPJ da loja da venda; central da seguradora, SUSEP,
+   condições gerais (link).
+
+**REGRA DURA no código:** se as envs da seguradora não estiverem preenchidas, TODO PDF sai
+com marca d'água diagonal "AMBIENTE DE TESTE — SEM VALIDADE". Sem exceção. (Proteção contra
+emissão de documento sem lastro legal.)
+
+**Página pública `/validar/{codigo}`** (sem login, QR code do PDF aponta pra cá): status do
+certificado (ATIVO/SUSPENSO/CANCELADO/EXPIRADO), vigência, modelo do aparelho, IMEI mascarado
+(últimos 4), nome parcial do titular — valida sem expor dados pessoais.
+
+**Mensagem de entrega (WhatsApp):** "🎉 {primeiro_nome}, seu aparelho está protegido!
+Certificado PS-2026-000123 em anexo. Vigência até {data}. Guarde este documento. Qualquer
+sinistro, é só chamar aqui." + PDF. Email equivalente (Resend).
+
+### M4 — Pagamentos e split (mínimo da sprint S3)
+
+- Integração **Asaas atrás da interface `PaymentProvider`** já stubada: criar cliente Asaas,
+  criar cobrança (PIX | CARTAO_RECORRENTE mensal | ANUAL à vista ou parcelado | BOLETO),
+  split de 30% para a conta da loja (`asaasWalletId` no cadastro da loja; % configurável).
+- Fluxo no app-loja após vistoria APROVADA: escolher plano/forma de pagamento → gerar
+  cobrança → exibir QR Pix / link na tela para o cliente pagar ALI no balcão.
+- Webhook Asaas (`POST /webhooks/asaas`, validado por token `ASAAS_WEBHOOK_TOKEN` no header
+  `asaas-access-token`): `PAYMENT_CONFIRMED` / `PAYMENT_RECEIVED` da PRIMEIRA cobrança do
+  contrato → dispara o job `emitir-certificado` (BullMQ, retry + idempotência).
+  Demais eventos (`PAYMENT_OVERDUE`, `PAYMENT_REFUNDED`) atualizam status do pagamento.
+- Registrar comissão da loja via gancho `registrarComissaoEmissao` (M12, já existente).
+- Regra de ouro: **não perder venda** — cartão recusado → sistema oferece Pix na mesma tela;
+  Pix não pago em 30 min → gerar boleto e enviar por WhatsApp (régua completa fica pro M5).
 
 ### M5 — Régua de cobrança (BullMQ + Digisac + Resend)
 
@@ -104,7 +159,9 @@ Fluxo no app-loja, mobile-first, câmera nativa:
 - Esteira: ABERTO → DOCUMENTACAO_PENDENTE → EM_ANALISE → APROVADO / NEGADO
 - Regras automáticas de alerta antifraude: sinistro < 30 dias da emissão, mesmo CPF com
   sinistro anterior, mesma loja com sinistralidade > X%, BO com data anterior à vigência
-- APROVADO → gera **voucher**: valor = capital segurado (menos franquia se houver),
+- APROVADO → gera **voucher**: valor = capital_segurado × (1 − franquia_percentual/100),
+  lendo `franquia_percentual` do PLANO (default 25) — nunca hard-coded. Ex.: aparelho
+  R$ 3.000 → voucher R$ 2.250 / franquia R$ 750 (teste unitário obrigatório).
   QR code, validade 90 dias, resgatável apenas na loja de origem (configurável)
 - App-loja tem tela "Resgatar voucher": escaneia QR, confirma aparelho novo vendido,
   registra novo IMEI (cliente pode contratar nova proteção na hora — fluxo encadeado)
@@ -210,6 +267,12 @@ repasses (lote, loja_id, valor_liquido, status: ABERTO|PROCESSANDO|PAGO|FALHA, c
 
 Loja ganha `modo_pagamento_comissao` (SPLIT_INSTANTANEO|REPASSE_PROGRAMADO).
 
+Ajustes da S3: `aparelhos` ganha `armazenamento_gb` (obrigatório) e `cor`; `planos` ganha
+`franquia_percentual` (default 25 — fonte única do cálculo de voucher no M6); `certificados`
+ganha `forma_pagamento` contratada; `pagamentos` ganha `asaas_customer_id`/`external_ref` e
+flag de 1ª cobrança do contrato; série sequencial do certificado em tabela própria
+(`certificado_series` por ano) pra numeração `PS-AAAA-000001` atômica.
+
 Regras de integridade: IMEI único com proteção ATIVA; certificado só nasce com vistoria
 APROVADA; voucher só nasce de sinistro APROVADO; toda mudança de status em audit_log;
 todo clawback lança débito na conta-corrente com saldo_apos e memória de cálculo.
@@ -229,6 +292,12 @@ todo clawback lança débito na conta-corrente com saldo_apos e memória de cál
 9. Sinistralidade por loja >30% por 2 meses → REVISAO automática; >60% → suspensão sugerida.
 10. Provider de pagamento é plugável: Asaas (split instantâneo) e Cora (cobrança + repasse
     programado via Pix) devem coexistir atrás da interface PaymentProvider.
+11. Emissão é 100% automática pós-pagamento (webhook → job BullMQ) e idempotente: webhook
+    duplicado nunca gera segundo certificado para o mesmo contrato.
+12. Sem envs da seguradora (`SEGURADORA_*`, `APOLICE_NUMERO`, `PROCESSO_SUSEP`,
+    `ESTIPULANTE_*`) → todo PDF sai com marca d'água "AMBIENTE DE TESTE — SEM VALIDADE".
+13. Franquia é atributo do PLANO (`franquia_percentual`, default 25); o cálculo do voucher
+    (M6) e o exemplo em reais do PDF (M3) leem SEMPRE desse campo.
 
 ## 6. ROADMAP DE SPRINTS (MVP em ~6 semanas)
 
@@ -247,9 +316,14 @@ todo clawback lança débito na conta-corrente com saldo_apos e memória de cál
 
 ## 7. INTEGRAÇÕES — VARIÁVEIS DE AMBIENTE
 
-ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN, CORA_CLIENT_ID, CORA_CLIENT_SECRET, CORA_CERT (repasse Pix),
-DIGISAC_TOKEN, DIGISAC_URL, RESEND_API_KEY,
-R2_ACCESS_KEY/SECRET/BUCKET, DATABASE_URL, REDIS_URL, JWT_SECRET, SEGURADORA_* (definir após contrato)
+ASAAS_API_KEY, ASAAS_BASE_URL (sandbox: https://api-sandbox.asaas.com/v3), ASAAS_WEBHOOK_TOKEN,
+CORA_CLIENT_ID, CORA_CLIENT_SECRET, CORA_CERT (repasse Pix),
+DIGISAC_TOKEN, DIGISAC_URL, RESEND_API_KEY, RESEND_FROM,
+R2_ACCESS_KEY/SECRET/BUCKET/ENDPOINT/PUBLIC_URL, DATABASE_URL, REDIS_URL, JWT_SECRET,
+PUBLIC_VALIDAR_URL (base do link/QR de validação).
+Rodapé legal do bilhete (vazias → marca d'água "AMBIENTE DE TESTE — SEM VALIDADE"):
+SEGURADORA_NOME, SEGURADORA_CNPJ, APOLICE_NUMERO, PROCESSO_SUSEP,
+ESTIPULANTE_RAZAO, ESTIPULANTE_CNPJ, SOLATIUM_CNPJ, CONDICOES_GERAIS_URL, SEGURADORA_CENTRAL_TEL
 
 ## 8. STATUS
 
@@ -269,5 +343,24 @@ R2_ACCESS_KEY/SECRET/BUCKET, DATABASE_URL, REDIS_URL, JWT_SECRET, SEGURADORA_* (
       anual 2/12 → clawback 10/12) e lançamentos automáticos na conta-corrente (emissão/cancelamento/
       endosso). Liquidação (split/repasse) e M13 (dashboard de sinistralidade) registrados para a S4.
       Regras 7–10 adicionadas à seção 5.
-- [ ] Sprint atual: **S2** (vistoria antifraude M2 + upload R2 + validações IMEI)
-- Última atualização: 04/07/2026
+- [x] **Sprint S3 (M3+M4) — pagamento → emissão automática do bilhete** (07/07/2026,
+      branch `feat/s3-pagamento-emissao`): Asaas real atrás do `PaymentProvider`
+      (cliente com dedup por CPF, PIX com QR/copia-e-cola, assinatura mensal, cartão anual
+      à vista/parcelado, boleto, split percentual pela `asaasWalletId` da loja quando
+      `SPLIT_INSTANTANEO`), checkout no app-loja (wizard Nova Proteção: cliente+aparelho →
+      vistoria → plano/forma → QR na tela → polling → sucesso), webhook `/api/webhooks/asaas`
+      (token, PAYMENT_CONFIRMED/RECEIVED → job; OVERDUE/REFUNDED → status), fila BullMQ
+      `emissao` (5 tentativas, backoff exponencial, idempotência em 3 camadas: jobId único +
+      `unique(contratoId)` + flags de pdf/envio), numeração `PS-AAAA-000001` atômica
+      (`certificado_series`), PDF 1 página (pdfkit + QR `/validar/{codigo}`, caixa de
+      franquia com exemplo calculado, rodapé legal com placeholders e **marca d'água
+      "AMBIENTE DE TESTE — SEM VALIDADE" quando envs da seguradora ausentes**), entrega
+      automática WhatsApp (Digisac, PDF anexo) + email (Resend), comissão via
+      `registrarComissaoEmissao`, endpoint público `/validar/:codigo` mascarado + página
+      no app-loja, `franquiaPercentual` no plano (default 25) com teste 3.000→2.250/750,
+      migration 0004, Digisac/Resend/R2 providers reais com fallback stub sem env.
+      Gate verde: lint + typecheck + 40 testes + build 4/4.
+      **Vistoria nesta sprint é o gate mínimo** (código dinâmico + aprovação manual +
+      trava de IMEI); M2 completo (fotos, OCR, geolocalização) continua pendente.
+- [ ] Sprint atual: **S2** (vistoria antifraude M2 completa + upload R2 + OCR/geo)
+- Última atualização: 07/07/2026
