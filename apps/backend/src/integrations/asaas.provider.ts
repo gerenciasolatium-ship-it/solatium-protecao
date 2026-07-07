@@ -1,11 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  ClienteProviderInput,
-  CobrancaInput,
-  CobrancaResult,
-  PaymentProvider,
-} from './interfaces';
+import { ClienteProviderInput, CobrancaInput, CobrancaResult, PaymentProvider } from './interfaces';
 
 /**
  * Asaas atrás da interface PaymentProvider (CLAUDE.md M4).
@@ -20,7 +15,9 @@ export class AsaasProvider implements PaymentProvider {
   private readonly apiKey: string;
 
   constructor(config: ConfigService) {
-    this.baseUrl = (config.get<string>('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3').replace(/\/$/, '');
+    this.baseUrl = (
+      config.get<string>('ASAAS_BASE_URL') ?? 'https://api-sandbox.asaas.com/v3'
+    ).replace(/\/$/, '');
     this.apiKey = config.get<string>('ASAAS_API_KEY') ?? '';
   }
 
@@ -39,7 +36,9 @@ export class AsaasProvider implements PaymentProvider {
       const erros = (json.errors as { description?: string }[] | undefined)
         ?.map((e) => e.description)
         .join('; ');
-      this.logger.error(`Asaas ${metodo} ${caminho} → ${resposta.status}: ${erros ?? JSON.stringify(json)}`);
+      this.logger.error(
+        `Asaas ${metodo} ${caminho} → ${resposta.status}: ${erros ?? JSON.stringify(json)}`,
+      );
       throw new ServiceUnavailableException(`Asaas: ${erros ?? `HTTP ${resposta.status}`}`);
     }
     return json as T;
@@ -66,7 +65,10 @@ export class AsaasProvider implements PaymentProvider {
 
   async criarCobranca(input: CobrancaInput): Promise<CobrancaResult> {
     const vencimento = input.vencimento ?? new Date().toISOString().slice(0, 10);
-    const split = input.split?.map((s) => ({ walletId: s.walletId, percentualValue: s.percentual }));
+    const split = input.split?.map((s) => ({
+      walletId: s.walletId,
+      percentualValue: s.percentual,
+    }));
 
     if (input.formaPagamento === 'CARTAO_RECORRENTE') {
       const assinatura = await this.request<{ id: string }>('POST', '/subscriptions', {
@@ -80,12 +82,12 @@ export class AsaasProvider implements PaymentProvider {
         split,
       });
       // A 1ª cobrança da assinatura é criada na hora; é ela que o cliente paga no balcão.
-      const pagamentos = await this.request<{ data: { id: string; status: string; invoiceUrl?: string }[] }>(
-        'GET',
-        `/subscriptions/${assinatura.id}/payments?limit=1`,
-      );
+      const pagamentos = await this.request<{
+        data: { id: string; status: string; invoiceUrl?: string }[];
+      }>('GET', `/subscriptions/${assinatura.id}/payments?limit=1`);
       const primeira = pagamentos.data?.[0];
-      if (!primeira) throw new ServiceUnavailableException('Asaas: assinatura criada sem cobrança inicial');
+      if (!primeira)
+        throw new ServiceUnavailableException('Asaas: assinatura criada sem cobrança inicial');
       return {
         provedorId: primeira.id,
         assinaturaId: assinatura.id,
@@ -95,7 +97,11 @@ export class AsaasProvider implements PaymentProvider {
     }
 
     const billingType =
-      input.formaPagamento === 'PIX' ? 'PIX' : input.formaPagamento === 'BOLETO' ? 'BOLETO' : 'CREDIT_CARD';
+      input.formaPagamento === 'PIX'
+        ? 'PIX'
+        : input.formaPagamento === 'BOLETO'
+          ? 'BOLETO'
+          : 'CREDIT_CARD';
     const parcelado = input.formaPagamento === 'CARTAO_ANUAL' && (input.parcelas ?? 1) > 1;
 
     const pagamento = await this.request<{

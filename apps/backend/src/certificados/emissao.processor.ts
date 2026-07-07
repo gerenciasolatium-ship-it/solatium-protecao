@@ -22,7 +22,9 @@ export class EmissaoProcessor extends WorkerHost {
   }
 
   async process(job: Job<EmitirCertificadoJob>) {
-    this.logger.log(`Job emitir-certificado contrato=${job.data.contratoId} tentativa=${job.attemptsMade + 1}`);
+    this.logger.log(
+      `Job emitir-certificado contrato=${job.data.contratoId} tentativa=${job.attemptsMade + 1}`,
+    );
     return this.emissao.emitirParaContrato(job.data.contratoId);
   }
 }

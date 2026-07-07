@@ -87,7 +87,12 @@ export class AsaasWebhookController {
             clienteId: contrato.clienteId,
             contratoId: contrato.id,
             asaasId: pagamentoAsaas.id,
-            tipo: pagamentoAsaas.billingType === 'PIX' ? 'PIX' : pagamentoAsaas.billingType === 'BOLETO' ? 'BOLETO' : 'CARTAO',
+            tipo:
+              pagamentoAsaas.billingType === 'PIX'
+                ? 'PIX'
+                : pagamentoAsaas.billingType === 'BOLETO'
+                  ? 'BOLETO'
+                  : 'CARTAO',
             status: 'CONFIRMADO',
             valor: pagamentoAsaas.value ?? 0,
             pagoEm,
@@ -102,9 +107,15 @@ export class AsaasWebhookController {
     }
 
     if (evento === 'PAYMENT_OVERDUE' && pagamento) {
-      await this.prisma.pagamento.update({ where: { id: pagamento.id }, data: { status: 'VENCIDO' } });
+      await this.prisma.pagamento.update({
+        where: { id: pagamento.id },
+        data: { status: 'VENCIDO' },
+      });
     } else if (evento === 'PAYMENT_REFUNDED' && pagamento) {
-      await this.prisma.pagamento.update({ where: { id: pagamento.id }, data: { status: 'ESTORNADO' } });
+      await this.prisma.pagamento.update({
+        where: { id: pagamento.id },
+        data: { status: 'ESTORNADO' },
+      });
     }
     return { recebido: true };
   }
@@ -113,7 +124,11 @@ export class AsaasWebhookController {
   private async enfileirarEmissao(contratoId: string) {
     const jaEmitido = await this.prisma.certificado.findUnique({ where: { contratoId } });
     if (jaEmitido) return;
-    await this.filaEmissao.add('emitir-certificado', { contratoId }, { jobId: `emitir-${contratoId}` });
+    await this.filaEmissao.add(
+      'emitir-certificado',
+      { contratoId },
+      { jobId: `emitir-${contratoId}` },
+    );
     this.logger.log(`Job emitir-certificado enfileirado para contrato ${contratoId}`);
   }
 

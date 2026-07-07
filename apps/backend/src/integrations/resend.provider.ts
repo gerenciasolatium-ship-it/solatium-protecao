@@ -11,7 +11,8 @@ export class ResendProvider implements EmailProvider {
 
   constructor(config: ConfigService) {
     this.apiKey = config.get<string>('RESEND_API_KEY') ?? '';
-    this.from = config.get<string>('RESEND_FROM') ?? 'Proteção Solatium <protecao@solatiumseguros.com>';
+    this.from =
+      config.get<string>('RESEND_FROM') ?? 'Proteção Solatium <protecao@solatiumseguros.com>';
   }
 
   async enviarEmail(input: EmailInput): Promise<{ enviado: boolean; id?: string }> {

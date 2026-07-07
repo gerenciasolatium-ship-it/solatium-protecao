@@ -343,5 +343,24 @@ ESTIPULANTE_RAZAO, ESTIPULANTE_CNPJ, SOLATIUM_CNPJ, CONDICOES_GERAIS_URL, SEGURA
       anual 2/12 → clawback 10/12) e lançamentos automáticos na conta-corrente (emissão/cancelamento/
       endosso). Liquidação (split/repasse) e M13 (dashboard de sinistralidade) registrados para a S4.
       Regras 7–10 adicionadas à seção 5.
-- [ ] Sprint atual: **S2** (vistoria antifraude M2 + upload R2 + validações IMEI)
-- Última atualização: 04/07/2026
+- [x] **Sprint S3 (M3+M4) — pagamento → emissão automática do bilhete** (07/07/2026,
+      branch `feat/s3-pagamento-emissao`): Asaas real atrás do `PaymentProvider`
+      (cliente com dedup por CPF, PIX com QR/copia-e-cola, assinatura mensal, cartão anual
+      à vista/parcelado, boleto, split percentual pela `asaasWalletId` da loja quando
+      `SPLIT_INSTANTANEO`), checkout no app-loja (wizard Nova Proteção: cliente+aparelho →
+      vistoria → plano/forma → QR na tela → polling → sucesso), webhook `/api/webhooks/asaas`
+      (token, PAYMENT_CONFIRMED/RECEIVED → job; OVERDUE/REFUNDED → status), fila BullMQ
+      `emissao` (5 tentativas, backoff exponencial, idempotência em 3 camadas: jobId único +
+      `unique(contratoId)` + flags de pdf/envio), numeração `PS-AAAA-000001` atômica
+      (`certificado_series`), PDF 1 página (pdfkit + QR `/validar/{codigo}`, caixa de
+      franquia com exemplo calculado, rodapé legal com placeholders e **marca d'água
+      "AMBIENTE DE TESTE — SEM VALIDADE" quando envs da seguradora ausentes**), entrega
+      automática WhatsApp (Digisac, PDF anexo) + email (Resend), comissão via
+      `registrarComissaoEmissao`, endpoint público `/validar/:codigo` mascarado + página
+      no app-loja, `franquiaPercentual` no plano (default 25) com teste 3.000→2.250/750,
+      migration 0004, Digisac/Resend/R2 providers reais com fallback stub sem env.
+      Gate verde: lint + typecheck + 40 testes + build 4/4.
+      **Vistoria nesta sprint é o gate mínimo** (código dinâmico + aprovação manual +
+      trava de IMEI); M2 completo (fotos, OCR, geolocalização) continua pendente.
+- [ ] Sprint atual: **S2** (vistoria antifraude M2 completa + upload R2 + OCR/geo)
+- Última atualização: 07/07/2026

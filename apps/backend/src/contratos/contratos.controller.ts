@@ -15,7 +15,8 @@ export class ContratosController {
   @Post()
   @Roles(Role.ADMIN, Role.OPERADOR, Role.LOJA_ADMIN, Role.LOJA_VENDEDOR)
   @ApiOperation({
-    summary: 'Checkout: vistoria APROVADA + plano + forma de pagamento → cobrança Asaas (QR Pix/link).',
+    summary:
+      'Checkout: vistoria APROVADA + plano + forma de pagamento → cobrança Asaas (QR Pix/link).',
   })
   create(@Body() dto: CreateContratoDto, @CurrentUser() usuario: UsuarioAutenticado) {
     return this.contratos.create(dto, usuario);

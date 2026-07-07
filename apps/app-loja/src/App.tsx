@@ -4,11 +4,23 @@ import { Login } from './pages/Login';
 import { Home } from './pages/Home';
 import { Clientes } from './pages/Clientes';
 import { NovoCliente } from './pages/NovoCliente';
+import { NovaProtecao } from './pages/NovaProtecao';
+import { ValidarCertificado } from './pages/ValidarCertificado';
 
 export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Pública: aberta pelo QR code do bilhete (sem login). */}
+      <Route path="/validar/:codigo" element={<ValidarCertificado />} />
+      <Route
+        path="/protecao/nova"
+        element={
+          <ProtectedRoute>
+            <NovaProtecao />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/"
         element={

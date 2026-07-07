@@ -78,7 +78,10 @@ export class VistoriasService {
     });
   }
 
-  async findAll(query: PaginacaoQueryDto, usuario: UsuarioAutenticado): Promise<Paginacao<unknown>> {
+  async findAll(
+    query: PaginacaoQueryDto,
+    usuario: UsuarioAutenticado,
+  ): Promise<Paginacao<unknown>> {
     const { pagina, porPagina, busca } = query;
     const where: Prisma.VistoriaWhereInput = {
       ...(usuario.lojaId ? { lojaId: usuario.lojaId } : {}),

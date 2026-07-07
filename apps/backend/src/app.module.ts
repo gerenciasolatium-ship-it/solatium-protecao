@@ -2,7 +2,6 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import IORedis from 'ioredis';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
@@ -33,10 +32,11 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        connection: new IORedis(config.get<string>('REDIS_URL') ?? 'redis://localhost:6379', {
+        connection: {
+          url: config.get<string>('REDIS_URL') ?? 'redis://localhost:6379',
           maxRetriesPerRequest: null,
           enableReadyCheck: false,
-        }),
+        },
       }),
     }),
     PrismaModule,

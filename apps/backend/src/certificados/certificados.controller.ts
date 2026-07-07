@@ -1,4 +1,12 @@
-import { Controller, ForbiddenException, Get, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import {
+  Controller,
+  ForbiddenException,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Prisma } from '@prisma/client';
 import { Role, type Paginacao } from '@solatium/shared';
@@ -72,7 +80,8 @@ export class CertificadosController {
   @ApiOperation({ summary: 'Reprocessa entrega (WhatsApp/email) do certificado já emitido.' })
   async reenviar(@Param('id') id: string) {
     const certificado = await this.prisma.certificado.findUnique({ where: { id } });
-    if (!certificado?.contratoId) throw new NotFoundException('Certificado não encontrado ou sem contrato.');
+    if (!certificado?.contratoId)
+      throw new NotFoundException('Certificado não encontrado ou sem contrato.');
     // Zera flags de envio e reexecuta o fluxo idempotente de entrega.
     await this.prisma.certificado.update({
       where: { id },

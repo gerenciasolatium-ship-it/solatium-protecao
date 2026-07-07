@@ -13,7 +13,10 @@ export class CreateAparelhoDto {
   @Length(1, 80)
   modelo!: string;
 
-  @ApiProperty({ example: 128, description: 'Capacidade de armazenamento em GB (obrigatório — sai no bilhete).' })
+  @ApiProperty({
+    example: 128,
+    description: 'Capacidade de armazenamento em GB (obrigatório — sai no bilhete).',
+  })
   @IsInt()
   @Min(1)
   armazenamentoGb!: number;

@@ -44,12 +44,12 @@ export interface RodapeLegal {
 export function rodapeLegalCompleto(rodape: RodapeLegal): boolean {
   return Boolean(
     rodape.seguradoraNome?.trim() &&
-      rodape.seguradoraCnpj?.trim() &&
-      rodape.apoliceNumero?.trim() &&
-      rodape.processoSusep?.trim() &&
-      rodape.estipulanteRazao?.trim() &&
-      rodape.estipulanteCnpj?.trim() &&
-      rodape.solatiumCnpj?.trim(),
+    rodape.seguradoraCnpj?.trim() &&
+    rodape.apoliceNumero?.trim() &&
+    rodape.processoSusep?.trim() &&
+    rodape.estipulanteRazao?.trim() &&
+    rodape.estipulanteCnpj?.trim() &&
+    rodape.solatiumCnpj?.trim(),
   );
 }
 

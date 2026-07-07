@@ -191,10 +191,15 @@ export class EmissaoService {
           canal: 'WHATSAPP',
           template: 'certificado_emitido',
           status: enviado ? 'ENVIADO' : 'FALHA',
-          payload: { certificadoId: certificado.id, telefone: contrato.cliente.telefoneWhatsapp, mensagemId: id },
+          payload: {
+            certificadoId: certificado.id,
+            telefone: contrato.cliente.telefoneWhatsapp,
+            mensagemId: id,
+          },
         },
       });
-      if (!enviado) throw new Error(`Falha no envio WhatsApp do certificado ${certificado.numero} (retry).`);
+      if (!enviado)
+        throw new Error(`Falha no envio WhatsApp do certificado ${certificado.numero} (retry).`);
       await this.prisma.certificado.update({
         where: { id: certificado.id },
         data: { whatsappEnviadoEm: new Date() },
@@ -300,7 +305,12 @@ export class EmissaoService {
   private async audit(acao: string, certificadoId: string, depois: Record<string, unknown>) {
     await this.prisma.auditLog
       .create({
-        data: { acao, entidade: 'certificados', entidadeId: certificadoId, depois: depois as Prisma.InputJsonValue },
+        data: {
+          acao,
+          entidade: 'certificados',
+          entidadeId: certificadoId,
+          depois: depois as Prisma.InputJsonValue,
+        },
       })
       .catch((erro) => this.logger.error(`Falha ao auditar emissão: ${erro}`));
   }

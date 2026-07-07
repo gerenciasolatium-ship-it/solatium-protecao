@@ -50,10 +50,16 @@ const LARGURA = 595.28; // A4 pt
 export class BilhetePdfService {
   async gerar(dados: BilheteDados): Promise<Buffer> {
     const qr = await QRCode.toBuffer(dados.validarUrl, { width: 180, margin: 1 });
-    const doc = new PDFDocument({ size: 'A4', margin: M, info: { Title: `Certificado ${dados.numero}` } });
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: M,
+      info: { Title: `Certificado ${dados.numero}` },
+    });
     const blocos: Buffer[] = [];
     doc.on('data', (b: Buffer) => blocos.push(b));
-    const fim = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(blocos))));
+    const fim = new Promise<Buffer>((resolve) =>
+      doc.on('end', () => resolve(Buffer.concat(blocos))),
+    );
 
     const emTeste = !rodapeLegalCompleto(dados.rodape);
     if (emTeste) this.marcaDagua(doc);
@@ -64,7 +70,10 @@ export class BilhetePdfService {
     y = this.bloco(doc, y, 'SEGURADO', [
       ['Nome completo', dados.cliente.nome],
       ['CPF', dados.cliente.cpf],
-      ['Data de nascimento', dados.cliente.nascimento ? formatarDataBr(dados.cliente.nascimento) : '—'],
+      [
+        'Data de nascimento',
+        dados.cliente.nascimento ? formatarDataBr(dados.cliente.nascimento) : '—',
+      ],
       ['Telefone/WhatsApp', dados.cliente.telefone],
       ['Email', dados.cliente.email || '—'],
       ['Endereço', dados.cliente.endereco],
@@ -76,13 +85,19 @@ export class BilhetePdfService {
       ['Cor', dados.aparelho.cor || '—'],
       ['IMEI', dados.aparelho.imei],
       ['Valor de referência (capital segurado)', formatarMoeda(dados.aparelho.valorReferencia)],
-      ['Vistoria aprovada', `nº ${dados.vistoria.numero} em ${formatarDataHoraBr(dados.vistoria.aprovadaEm)}`],
+      [
+        'Vistoria aprovada',
+        `nº ${dados.vistoria.numero} em ${formatarDataHoraBr(dados.vistoria.aprovadaEm)}`,
+      ],
     ]);
 
     y = this.bloco(doc, y, 'VIGÊNCIA', [
       ['Início', formatarDataHoraBr(dados.vigenciaInicio)],
       ['Fim', formatarDataHoraBr(dados.vigenciaFim)],
-      ['Carência roubo/furto', `72 horas — cobertura plena a partir de ${formatarDataHoraBr(dados.carenciaAte)}`],
+      [
+        'Carência roubo/furto',
+        `72 horas — cobertura plena a partir de ${formatarDataHoraBr(dados.carenciaAte)}`,
+      ],
       ['Forma de pagamento', dados.formaPagamento],
     ]);
 
@@ -107,12 +122,26 @@ export class BilhetePdfService {
     doc.fillColor('#000000');
   }
 
-  private bloco(doc: PDFKit.PDFDocument, y: number, titulo: string, linhas: [string, string][]): number {
+  private bloco(
+    doc: PDFKit.PDFDocument,
+    y: number,
+    titulo: string,
+    linhas: [string, string][],
+  ): number {
     doc.font('Helvetica-Bold').fontSize(10).fillColor(AZUL).text(titulo, M, y);
-    doc.moveTo(M, y + 13).lineTo(LARGURA - M, y + 13).lineWidth(0.7).strokeColor(AZUL).stroke();
+    doc
+      .moveTo(M, y + 13)
+      .lineTo(LARGURA - M, y + 13)
+      .lineWidth(0.7)
+      .strokeColor(AZUL)
+      .stroke();
     let atual = y + 19;
     for (const [rotulo, valor] of linhas) {
-      doc.font('Helvetica-Bold').fontSize(8.2).fillColor(CINZA).text(`${rotulo}: `, M, atual, { continued: true });
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8.2)
+        .fillColor(CINZA)
+        .text(`${rotulo}: `, M, atual, { continued: true });
       doc.font('Helvetica').fillColor('#000000').text(valor);
       atual = doc.y + 2;
     }
@@ -120,15 +149,22 @@ export class BilhetePdfService {
   }
 
   private caixaCobertura(doc: PDFKit.PDFDocument, y: number, dados: BilheteDados): number {
-    const { voucher, franquia } = calcularVoucher(dados.aparelho.valorReferencia, dados.franquiaPercentual);
+    const { voucher, franquia } = calcularVoucher(
+      dados.aparelho.valorReferencia,
+      dados.franquiaPercentual,
+    );
     const largura = LARGURA - 2 * M;
     const altura = 132;
     doc.roundedRect(M, y, largura, altura, 6).lineWidth(1.5).strokeColor(DOURADO).stroke();
     doc.roundedRect(M, y, largura, 18, 6).fill(DOURADO);
-    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(10).text('COBERTURA E FRANQUIA', M, y + 4, {
-      width: largura,
-      align: 'center',
-    });
+    doc
+      .fillColor('#FFFFFF')
+      .font('Helvetica-Bold')
+      .fontSize(10)
+      .text('COBERTURA E FRANQUIA', M, y + 4, {
+        width: largura,
+        align: 'center',
+      });
 
     const px = M + 10;
     const pw = largura - 20;
@@ -153,7 +189,9 @@ export class BilhetePdfService {
         `${formatarMoeda(voucher)} (indenização) e sua participação (franquia) será de ${formatarMoeda(franquia)}.`,
       true,
     );
-    item('Como acionar: WhatsApp oficial da Proteção Solatium (canal de sinistro) + Boletim de Ocorrência (B.O.).');
+    item(
+      'Como acionar: WhatsApp oficial da Proteção Solatium (canal de sinistro) + Boletim de Ocorrência (B.O.).',
+    );
     item(
       'Principais exclusões (resumo): furto simples sem vestígios (quando não coberto), quebra acidental, perda e esquecimento — conforme condições gerais.',
     );
@@ -173,17 +211,27 @@ export class BilhetePdfService {
         `Condições gerais: ${ph(r.condicoesGeraisUrl, 'CONDICOES_GERAIS_URL')}`,
     ];
     const yBase = 841.89 - M - linhas.length * 11 - 14;
-    doc.moveTo(M, yBase - 4).lineTo(LARGURA - M, yBase - 4).lineWidth(0.5).strokeColor(CINZA).stroke();
+    doc
+      .moveTo(M, yBase - 4)
+      .lineTo(LARGURA - M, yBase - 4)
+      .lineWidth(0.5)
+      .strokeColor(CINZA)
+      .stroke();
     doc.font('Helvetica').fontSize(6.8).fillColor(CINZA);
     linhas.forEach((linha, i) => doc.text(linha, M, yBase + i * 11, { width: LARGURA - 2 * M }));
     if (emTeste) {
       doc
         .font('Helvetica-Bold')
         .fillColor('#B00020')
-        .text('AMBIENTE DE TESTE — DOCUMENTO SEM VALIDADE LEGAL', M, yBase + linhas.length * 11 + 2, {
-          width: LARGURA - 2 * M,
-          align: 'center',
-        });
+        .text(
+          'AMBIENTE DE TESTE — DOCUMENTO SEM VALIDADE LEGAL',
+          M,
+          yBase + linhas.length * 11 + 2,
+          {
+            width: LARGURA - 2 * M,
+            align: 'center',
+          },
+        );
     }
   }
 

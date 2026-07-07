@@ -50,7 +50,9 @@ export class ContratosService {
       throw new ConflictException('Só é possível contratar com vistoria APROVADA.');
     }
     if (vistoria.contrato) {
-      throw new ConflictException('Esta vistoria já tem um contrato. Consulte-o em vez de criar outro.');
+      throw new ConflictException(
+        'Esta vistoria já tem um contrato. Consulte-o em vez de criar outro.',
+      );
     }
 
     const plano = await this.prisma.plano.findUnique({ where: { id: dto.planoId } });
@@ -64,7 +66,11 @@ export class ContratosService {
       throw new BadRequestException('O valor do aparelho está fora da faixa deste plano.');
     }
 
-    const { valorCobranca, premioTotal, parcelas } = this.precificar(plano, dto.formaPagamento, dto.parcelas);
+    const { valorCobranca, premioTotal, parcelas } = this.precificar(
+      plano,
+      dto.formaPagamento,
+      dto.parcelas,
+    );
 
     const contrato = await this.prisma.contrato.create({
       data: {
@@ -113,9 +119,27 @@ export class ContratosService {
       where: { id },
       include: {
         cliente: { select: { id: true, nome: true, cpf: true, telefoneWhatsapp: true } },
-        aparelho: { select: { marca: true, modelo: true, armazenamentoGb: true, imei: true, valorMercado: true } },
-        plano: { select: { id: true, nome: true, premioMensal: true, premioAnual: true, franquiaPercentual: true } },
-        certificado: { select: { id: true, numero: true, status: true, pdfUrl: true, vigenciaFim: true } },
+        aparelho: {
+          select: {
+            marca: true,
+            modelo: true,
+            armazenamentoGb: true,
+            imei: true,
+            valorMercado: true,
+          },
+        },
+        plano: {
+          select: {
+            id: true,
+            nome: true,
+            premioMensal: true,
+            premioAnual: true,
+            franquiaPercentual: true,
+          },
+        },
+        certificado: {
+          select: { id: true, numero: true, status: true, pdfUrl: true, vigenciaFim: true },
+        },
         pagamentos: { orderBy: { createdAt: 'desc' } },
       },
     });
@@ -130,9 +154,14 @@ export class ContratosService {
     parcelasDto?: number,
   ) {
     if (forma === 'CARTAO_RECORRENTE') {
-      if (!plano.premioMensal) throw new BadRequestException('Plano não tem prêmio mensal definido.');
+      if (!plano.premioMensal)
+        throw new BadRequestException('Plano não tem prêmio mensal definido.');
       const mensal = Number(plano.premioMensal);
-      return { valorCobranca: mensal, premioTotal: Math.round(mensal * 12 * 100) / 100, parcelas: 12 };
+      return {
+        valorCobranca: mensal,
+        premioTotal: Math.round(mensal * 12 * 100) / 100,
+        parcelas: 12,
+      };
     }
     if (!plano.premioAnual) throw new BadRequestException('Plano não tem prêmio anual definido.');
     const anual = Number(plano.premioAnual);
@@ -173,7 +202,10 @@ export class ContratosService {
     if (contrato.loja.modoPagamentoComissao === 'SPLIT_INSTANTANEO') {
       if (contrato.loja.asaasWalletId) {
         split = [
-          { walletId: contrato.loja.asaasWalletId, percentual: Math.round(Number(contrato.loja.comissaoPct) * 10000) / 100 },
+          {
+            walletId: contrato.loja.asaasWalletId,
+            percentual: Math.round(Number(contrato.loja.comissaoPct) * 10000) / 100,
+          },
         ];
       } else {
         this.logger.warn(
