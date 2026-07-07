@@ -6,6 +6,7 @@ const links = [
   { to: '/lojas', rotulo: 'Lojas', fim: false },
   { to: '/vendedores', rotulo: 'Vendedores', fim: false },
   { to: '/planos', rotulo: 'Planos', fim: false },
+  { to: '/modelos', rotulo: 'Modelos', fim: false },
   { to: '/clientes', rotulo: 'Clientes', fim: false },
 ];
 

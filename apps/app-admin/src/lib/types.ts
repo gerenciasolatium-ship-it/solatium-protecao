@@ -52,6 +52,17 @@ export interface Plano {
   ativo?: boolean;
 }
 
+export interface ModeloAparelho {
+  id: string;
+  marca: string;
+  modelo: string;
+  armazenamentoGb: number;
+  valorReferencia: number;
+  protecaoMensal?: number | null;
+  protecaoAnual?: number | null;
+  ativo?: boolean;
+}
+
 export interface Cliente {
   id: string;
   nome: string;

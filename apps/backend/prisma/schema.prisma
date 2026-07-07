@@ -264,6 +264,25 @@ model Plano {
   @@map("planos")
 }
 
+// Catálogo de referência de modelos (não é o aparelho do cliente — ver Aparelho).
+// valorReferencia alimenta o capital segurado sugerido; protecaoMensal/Anual são
+// os preços de venda da proteção definidos pelo admin (null = ainda não precificado).
+model ModeloAparelho {
+  id              String   @id @default(uuid())
+  marca           String
+  modelo          String
+  armazenamentoGb Int
+  valorReferencia Decimal  @db.Decimal(12, 2)
+  protecaoMensal  Decimal? @db.Decimal(12, 2)
+  protecaoAnual   Decimal? @db.Decimal(12, 2)
+  ativo           Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([marca, modelo, armazenamentoGb])
+  @@map("modelos_aparelho")
+}
+
 // ===========================================================================
 // M2 — VISTORIA
 // ===========================================================================

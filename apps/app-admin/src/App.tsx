@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Lojas from './pages/Lojas';
 import Vendedores from './pages/Vendedores';
 import Planos from './pages/Planos';
+import Modelos from './pages/Modelos';
 import Clientes from './pages/Clientes';
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/lojas" element={<Lojas />} />
           <Route path="/vendedores" element={<Vendedores />} />
           <Route path="/planos" element={<Planos />} />
+          <Route path="/modelos" element={<Modelos />} />
           <Route path="/clientes" element={<Clientes />} />
         </Route>
       </Route>
