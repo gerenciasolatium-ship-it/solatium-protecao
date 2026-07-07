@@ -38,6 +38,8 @@ export class AparelhosService {
       data: {
         marca: dto.marca,
         modelo: dto.modelo,
+        armazenamentoGb: dto.armazenamentoGb,
+        cor: dto.cor,
         imei,
         valorMercado: dto.valorMercado,
         notaFiscalUrl: dto.notaFiscalUrl,

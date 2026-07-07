@@ -83,6 +83,21 @@ export const PlanoPeriodicidade = {
 } as const;
 export type PlanoPeriodicidade = (typeof PlanoPeriodicidade)[keyof typeof PlanoPeriodicidade];
 
+export const FormaPagamento = {
+  PIX: 'PIX',
+  CARTAO_RECORRENTE: 'CARTAO_RECORRENTE',
+  CARTAO_ANUAL: 'CARTAO_ANUAL',
+  BOLETO: 'BOLETO',
+} as const;
+export type FormaPagamento = (typeof FormaPagamento)[keyof typeof FormaPagamento];
+
+export const ContratoStatus = {
+  AGUARDANDO_PAGAMENTO: 'AGUARDANDO_PAGAMENTO',
+  ATIVO: 'ATIVO',
+  CANCELADO: 'CANCELADO',
+} as const;
+export type ContratoStatus = (typeof ContratoStatus)[keyof typeof ContratoStatus];
+
 // ---------------------------------------------------------------------------
 // DTOs de API usados pelos frontends
 // ---------------------------------------------------------------------------
@@ -112,5 +127,6 @@ export interface Paginacao<T> {
 // ---------------------------------------------------------------------------
 export const COMISSAO_LOJA_PADRAO = 0.3; // 30%
 export const CARENCIA_HORAS_PADRAO = 72;
+export const FRANQUIA_PERCENTUAL_PADRAO = 25; // % do capital segurado (fonte: plano)
 export const RAIO_LOJA_METROS_PADRAO = 500;
 export const VOUCHER_VALIDADE_DIAS_PADRAO = 90;

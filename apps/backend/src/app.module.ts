@@ -1,6 +1,8 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import IORedis from 'ioredis';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
@@ -11,6 +13,10 @@ import { AparelhosModule } from './aparelhos/aparelhos.module';
 import { PlanosModule } from './planos/planos.module';
 import { ModelosAparelhoModule } from './modelos-aparelho/modelos-aparelho.module';
 import { FinanceiroModule } from './financeiro/financeiro.module';
+import { VistoriasModule } from './vistorias/vistorias.module';
+import { ContratosModule } from './contratos/contratos.module';
+import { CertificadosModule } from './certificados/certificados.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 import { HealthModule } from './health/health.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -23,6 +29,16 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
       isGlobal: true,
       envFilePath: ['../../.env', '.env'],
     }),
+    // Fila da emissão automática (M3). maxRetriesPerRequest: null é requisito do BullMQ.
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: new IORedis(config.get<string>('REDIS_URL') ?? 'redis://localhost:6379', {
+          maxRetriesPerRequest: null,
+          enableReadyCheck: false,
+        }),
+      }),
+    }),
     PrismaModule,
     IntegrationsModule,
     AuthModule,
@@ -34,6 +50,10 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     PlanosModule,
     ModelosAparelhoModule,
     FinanceiroModule,
+    VistoriasModule,
+    ContratosModule,
+    CertificadosModule,
+    WebhooksModule,
     HealthModule,
   ],
   providers: [
