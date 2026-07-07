@@ -7,6 +7,18 @@ import { setupSwagger } from './swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
+  // Checagem antecipada: sem DATABASE_URL o Prisma quebra no onModuleInit com um
+  // stack trace críptico (P1012). Falha aqui com mensagem acionável.
+  if (!process.env.DATABASE_URL) {
+    // eslint-disable-next-line no-console
+    console.error(
+      '❌ DATABASE_URL não configurada. Defina a variável de ambiente com a URL do Postgres ' +
+        '(no Railway: adicione o plugin PostgreSQL e referencie ${{Postgres.DATABASE_URL}} nas ' +
+        'Variables do serviço; local: copie .env.example para .env). A API não sobe sem ela.',
+    );
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
 
