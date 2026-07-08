@@ -362,5 +362,18 @@ ESTIPULANTE_RAZAO, ESTIPULANTE_CNPJ, SOLATIUM_CNPJ, CONDICOES_GERAIS_URL, SEGURA
       Gate verde: lint + typecheck + 40 testes + build 4/4.
       **Vistoria nesta sprint é o gate mínimo** (código dinâmico + aprovação manual +
       trava de IMEI); M2 completo (fotos, OCR, geolocalização) continua pendente.
+- [x] **Preenchimento rápido no wizard (08/07/2026, PR #4)**: aparelho por selects do
+      catálogo `/modelos-aparelho` com valor de referência automático (fallback digitação
+      manual) + CPF de cliente já cadastrado autopreenche nome/WhatsApp/email/nascimento.
+- [x] **M11 v1 — API de parceiros (08/07/2026, PR #5, stacked no #4)**: chave de API por
+      loja (`psk_...`, SHA-256 no banco, criação/revogação via `/lojas/{id}/chaves-api`,
+      ADMIN/OPERADOR), `POST /api/integracao/propostas` (header `x-api-key`) recebe
+      cliente(+aparelho) do CRM do parceiro e devolve **link do wizard pré-preenchido**
+      (`?proposta=<codigo>`, expira em 7 dias), `GET /api/integracao/propostas/{id}`
+      acompanha status ABERTA→UTILIZADA→CONCLUIDA (com nº do certificado), wizard
+      consome via `GET /propostas-externas/{codigo}` (restrito à loja dona) e envia
+      `propostaExterna` no `POST /contratos`. Migration 0005. Doc pro parceiro em
+      `docs/API-PARCEIROS.md`. Env nova: `APP_LOJA_URL` (base do link). Falta: tela de
+      chaves no app-admin + webhook de eventos pro CRM (v2).
 - [ ] Sprint atual: **S2** (vistoria antifraude M2 completa + upload R2 + OCR/geo)
-- Última atualização: 07/07/2026
+- Última atualização: 08/07/2026

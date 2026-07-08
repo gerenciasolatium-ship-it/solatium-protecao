@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { FormaPagamento, type Paginacao } from '@solatium/shared';
 import { Header } from '../components/Header';
 import { apiFetch, ApiError } from '../lib/api';
@@ -15,6 +16,29 @@ interface Cliente {
   telefoneWhatsapp?: string | null;
   email?: string | null;
   nascimento?: string | null;
+}
+
+/** Proposta criada pelo CRM do parceiro via API (M11) — abre o wizard preenchido. */
+interface PropostaExterna {
+  codigo: string;
+  referenciaExterna?: string | null;
+  payload: {
+    cliente: {
+      nome: string;
+      cpf: string;
+      telefoneWhatsapp: string;
+      email?: string | null;
+      nascimento?: string | null;
+    };
+    aparelho?: {
+      marca?: string | null;
+      modelo?: string | null;
+      armazenamentoGb?: number | null;
+      cor?: string | null;
+      imei?: string | null;
+      valorMercado?: number | null;
+    } | null;
+  };
 }
 
 interface ModeloCatalogo {
@@ -124,6 +148,7 @@ export function NovaProtecao() {
   const [email, setEmail] = useState('');
   const [nascimento, setNascimento] = useState('');
   const [clienteEncontrado, setClienteEncontrado] = useState<string | null>(null);
+  const [propostaCodigo, setPropostaCodigo] = useState<string | null>(null);
 
   // Dados do aparelho
   const [marca, setMarca] = useState('');
@@ -151,6 +176,47 @@ export function NovaProtecao() {
   function falha(err: unknown, fallback: string) {
     setErros([err instanceof ApiError ? err.message : fallback]);
   }
+
+  /* --------------- Proposta do CRM do parceiro (link pré-preenchido) ----- */
+
+  // último CPF já buscado em /clientes (evita refetch e sobrescrita indevida)
+  const cpfBuscadoRef = useRef('');
+  const [searchParams] = useSearchParams();
+  const propostaUrl = searchParams.get('proposta');
+  useEffect(() => {
+    if (!propostaUrl) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const proposta = await apiFetch<PropostaExterna>(`/propostas-externas/${propostaUrl}`);
+        if (cancelado) return;
+        const { cliente, aparelho } = proposta.payload;
+        // evita que o autofill por CPF sobrescreva os dados vindos do CRM
+        cpfBuscadoRef.current = apenasDigitos(cliente.cpf);
+        setNome(cliente.nome);
+        setCpf(mascararCpf(cliente.cpf));
+        setTelefone(mascararTelefone(cliente.telefoneWhatsapp));
+        if (cliente.email) setEmail(cliente.email);
+        if (cliente.nascimento) setNascimento(cliente.nascimento.slice(0, 10));
+        if (aparelho) {
+          setAparelhoManual(true); // dados do CRM podem estar fora do catálogo
+          if (aparelho.marca) setMarca(aparelho.marca);
+          if (aparelho.modelo) setModelo(aparelho.modelo);
+          if (aparelho.armazenamentoGb) setArmazenamento(String(aparelho.armazenamentoGb));
+          if (aparelho.cor) setCor(aparelho.cor);
+          if (aparelho.imei) setImei(aparelho.imei);
+          if (aparelho.valorMercado) setValor(valorEmCampo(aparelho.valorMercado));
+        }
+        setPropostaCodigo(proposta.codigo);
+      } catch (err) {
+        if (!cancelado) falha(err, 'Não foi possível carregar a proposta do parceiro.');
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propostaUrl]);
 
   /* --------------- Catálogo de modelos (preenchimento rápido) ------------ */
 
@@ -215,7 +281,6 @@ export function NovaProtecao() {
 
   /* --------------- Cliente já cadastrado: autopreenche pelo CPF ---------- */
 
-  const cpfBuscadoRef = useRef('');
   useEffect(() => {
     const d = apenasDigitos(cpf);
     if (d.length !== 11) {
@@ -377,6 +442,7 @@ export function NovaProtecao() {
           planoId: planoEscolhido.id,
           formaPagamento: forma,
           parcelas: forma === 'CARTAO_ANUAL' ? parcelas : undefined,
+          propostaExterna: propostaCodigo ?? undefined,
         },
       });
       setContrato(criado);
@@ -483,6 +549,11 @@ export function NovaProtecao() {
         {/* ---------------- Etapa 1: dados ---------------- */}
         {etapa === 'dados' && (
           <form onSubmit={submeterDados} className="flex flex-col gap-5" noValidate>
+            {propostaCodigo && (
+              <div className="rounded-xl bg-sky-50 px-4 py-3 text-sm font-medium text-sky-800">
+                Proposta recebida do CRM do parceiro — confira os dados antes de seguir.
+              </div>
+            )}
             <section className="card">
               <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">
                 Cliente
