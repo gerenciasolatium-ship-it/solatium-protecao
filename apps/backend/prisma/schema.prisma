@@ -168,6 +168,8 @@ model Loja {
   comissoes     Comissao[]
   contaCorrente ContaCorrenteLancamento[]
   repasses      Repasse[]
+  chavesApi     ParceiroChaveApi[]
+  propostasExternas PropostaExterna[]
 
   @@map("lojas")
 }
@@ -365,8 +367,9 @@ model Contrato {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  pagamentos  Pagamento[]
-  certificado Certificado?
+  pagamentos      Pagamento[]
+  certificado     Certificado?
+  propostaExterna PropostaExterna?
 
   @@map("contratos")
 }
@@ -642,4 +645,51 @@ model AuditLog {
 
   @@index([entidade, entidadeId])
   @@map("audit_log")
+}
+
+// ===========================================================================
+// M11 — API DE PARCEIROS (CRM do parceiro → proposta pré-preenchida)
+// ===========================================================================
+enum StatusPropostaExterna {
+  ABERTA // criada pelo CRM, aguardando o vendedor abrir o link
+  UTILIZADA // o wizard do app-loja já carregou os dados
+  CONCLUIDA // virou contrato
+  EXPIRADA
+}
+
+model ParceiroChaveApi {
+  id          String    @id @default(uuid())
+  lojaId      String
+  loja        Loja      @relation(fields: [lojaId], references: [id])
+  nome        String // ex.: "CRM interno da OnePurple"
+  // A chave completa (psk_...) só é exibida na criação; guardamos o SHA-256.
+  prefixo     String // primeiros caracteres, p/ o admin identificar a chave
+  chaveHash   String    @unique
+  ativo       Boolean   @default(true)
+  ultimoUsoEm DateTime?
+  createdAt   DateTime  @default(now())
+
+  propostas PropostaExterna[]
+
+  @@map("parceiro_chaves_api")
+}
+
+model PropostaExterna {
+  id                String                @id @default(uuid())
+  codigo            String                @unique // token do link pré-preenchido
+  lojaId            String
+  loja              Loja                  @relation(fields: [lojaId], references: [id])
+  chaveApiId        String
+  chaveApi          ParceiroChaveApi      @relation(fields: [chaveApiId], references: [id])
+  referenciaExterna String? // id do negócio/cliente no CRM do parceiro
+  payload           Json // { cliente, aparelho? } validados na entrada
+  status            StatusPropostaExterna @default(ABERTA)
+  utilizadaEm       DateTime?
+  contratoId        String?               @unique
+  contrato          Contrato?             @relation(fields: [contratoId], references: [id])
+  expiraEm          DateTime
+  createdAt         DateTime              @default(now())
+
+  @@index([lojaId, status])
+  @@map("propostas_externas")
 }

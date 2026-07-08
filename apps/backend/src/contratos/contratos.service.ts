@@ -86,6 +86,18 @@ export class ContratosService {
       },
     });
 
+    // M11: venda originada no CRM do parceiro → fecha o ciclo da proposta.
+    if (dto.propostaExterna) {
+      await this.prisma.propostaExterna.updateMany({
+        where: {
+          codigo: dto.propostaExterna,
+          lojaId: vistoria.lojaId,
+          status: { in: ['ABERTA', 'UTILIZADA'] },
+        },
+        data: { status: 'CONCLUIDA', contratoId: contrato.id },
+      });
+    }
+
     await this.gerarCobranca(contrato.id, dto.formaPagamento, parcelas, valorCobranca);
     return this.findOne(contrato.id, usuario);
   }
