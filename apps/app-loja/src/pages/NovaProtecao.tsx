@@ -627,6 +627,40 @@ export function NovaProtecao() {
               <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">
                 Cliente
               </h2>
+              {/* CPF primeiro: preenche nome e nascimento automaticamente */}
+              <div className="mb-3">
+                <label htmlFor="cpf" className="rotulo">
+                  CPF
+                </label>
+                <input
+                  id="cpf"
+                  className="campo"
+                  required
+                  autoFocus
+                  inputMode="numeric"
+                  placeholder="000.000.000-00"
+                  value={cpf}
+                  onChange={(e) => setCpf(mascararCpf(e.target.value))}
+                />
+                {buscandoCpf && (
+                  <p className="mt-1 text-xs text-slate-400" aria-live="polite">
+                    Buscando dados do CPF…
+                  </p>
+                )}
+                {!buscandoCpf && avisoCpf && (
+                  <p className="mt-1 text-xs text-sol-verde" aria-live="polite">
+                    {avisoCpf}
+                  </p>
+                )}
+                {!buscandoCpf &&
+                  !avisoCpf &&
+                  apenasDigitos(cpf).length === 11 &&
+                  !cpfValido(cpf) && (
+                    <p className="mt-1 text-xs text-red-500" aria-live="polite">
+                      CPF inválido — confira os dígitos.
+                    </p>
+                  )}
+              </div>
               <div className="mb-3">
                 <label htmlFor="nome" className="rotulo">
                   Nome completo
@@ -641,38 +675,6 @@ export function NovaProtecao() {
                 />
               </div>
               <div className="mb-3 grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="cpf" className="rotulo">
-                    CPF
-                  </label>
-                  <input
-                    id="cpf"
-                    className="campo"
-                    required
-                    inputMode="numeric"
-                    placeholder="000.000.000-00"
-                    value={cpf}
-                    onChange={(e) => setCpf(mascararCpf(e.target.value))}
-                  />
-                  {buscandoCpf && (
-                    <p className="mt-1 text-xs text-slate-400" aria-live="polite">
-                      Buscando dados do CPF…
-                    </p>
-                  )}
-                  {!buscandoCpf && avisoCpf && (
-                    <p className="mt-1 text-xs text-sol-verde" aria-live="polite">
-                      {avisoCpf}
-                    </p>
-                  )}
-                  {!buscandoCpf &&
-                    !avisoCpf &&
-                    apenasDigitos(cpf).length === 11 &&
-                    !cpfValido(cpf) && (
-                      <p className="mt-1 text-xs text-red-500" aria-live="polite">
-                        CPF inválido — confira os dígitos.
-                      </p>
-                    )}
-                </div>
                 <div>
                   <label htmlFor="nasc" className="rotulo">
                     Nascimento
