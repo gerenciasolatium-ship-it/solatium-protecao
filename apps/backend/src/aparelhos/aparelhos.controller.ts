@@ -28,6 +28,16 @@ export class AparelhosController {
     return this.aparelhos.findAll(query);
   }
 
+  @Get('tac/:tac')
+  @Roles(Role.ADMIN, Role.OPERADOR, Role.LOJA_ADMIN, Role.LOJA_VENDEDOR)
+  @ApiOperation({
+    summary:
+      'Identifica marca/modelo pelo TAC (8 primeiros dígitos do IMEI) via base própria de aparelhos.',
+  })
+  identificarPorTac(@Param('tac') tac: string) {
+    return this.aparelhos.identificarPorTac(tac);
+  }
+
   @Get(':id')
   @Roles(Role.ADMIN, Role.OPERADOR, Role.LOJA_ADMIN, Role.LOJA_VENDEDOR)
   findOne(@Param('id') id: string) {

@@ -16,6 +16,8 @@ import { VistoriasModule } from './vistorias/vistorias.module';
 import { ContratosModule } from './contratos/contratos.module';
 import { CertificadosModule } from './certificados/certificados.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { ParceirosApiModule } from './parceiros-api/parceiros-api.module';
+import { KycModule } from './kyc/kyc.module';
 import { HealthModule } from './health/health.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -54,6 +56,8 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     ContratosModule,
     CertificadosModule,
     WebhooksModule,
+    ParceirosApiModule,
+    KycModule,
     HealthModule,
   ],
   providers: [
