@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import type { Paginacao } from '@solatium/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -46,6 +51,34 @@ export class AparelhosService {
         clienteId: dto.clienteId,
       },
     });
+  }
+
+  /**
+   * TAC (8 primeiros dígitos do IMEI) identifica o modelo do aparelho.
+   * v1 usa a base própria (cresce a cada venda); um provedor GSMA externo
+   * pode ser plugado aqui depois sem mudar o contrato da rota.
+   */
+  async identificarPorTac(tac: string) {
+    const digitos = normalizarImei(tac).slice(0, 8);
+    if (digitos.length !== 8) {
+      throw new BadRequestException('TAC deve ter 8 dígitos (início do IMEI).');
+    }
+    const grupos = await this.prisma.aparelho.groupBy({
+      by: ['marca', 'modelo', 'armazenamentoGb'],
+      where: { imei: { startsWith: digitos } },
+      _count: { marca: true },
+      orderBy: { _count: { marca: 'desc' } },
+      take: 1,
+    });
+    if (grupos.length === 0) return { encontrado: false };
+    const g = grupos[0];
+    return {
+      encontrado: true,
+      marca: g.marca,
+      modelo: g.modelo,
+      armazenamentoGb: g.armazenamentoGb,
+      ocorrencias: g._count.marca,
+    };
   }
 
   async findAll(query: PaginacaoQueryDto): Promise<Paginacao<unknown>> {
