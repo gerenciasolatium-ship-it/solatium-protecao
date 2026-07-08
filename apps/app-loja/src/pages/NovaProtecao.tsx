@@ -12,6 +12,18 @@ interface Cliente {
   id: string;
   nome: string;
   cpf: string;
+  telefoneWhatsapp?: string | null;
+  email?: string | null;
+  nascimento?: string | null;
+}
+
+interface ModeloCatalogo {
+  id: string;
+  marca: string;
+  modelo: string;
+  armazenamentoGb: number;
+  valorReferencia: string | number;
+  ativo?: boolean;
 }
 
 interface Aparelho {
@@ -84,6 +96,11 @@ function reais(valor: string | number | null | undefined): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+/** Converte o decimal da API ("3500.00") para o formato do campo ("3500,00"). */
+function valorEmCampo(v: string | number): string {
+  return Number(v).toFixed(2).replace('.', ',');
+}
+
 const FORMAS: { valor: FormaPagamento; rotulo: string; detalhe: string }[] = [
   { valor: 'PIX', rotulo: 'Pix', detalhe: 'anual à vista — QR na tela' },
   { valor: 'CARTAO_RECORRENTE', rotulo: 'Cartão mensal', detalhe: 'assinatura recorrente' },
@@ -106,6 +123,7 @@ export function NovaProtecao() {
   const [telefone, setTelefone] = useState('');
   const [email, setEmail] = useState('');
   const [nascimento, setNascimento] = useState('');
+  const [clienteEncontrado, setClienteEncontrado] = useState<string | null>(null);
 
   // Dados do aparelho
   const [marca, setMarca] = useState('');
@@ -114,6 +132,8 @@ export function NovaProtecao() {
   const [cor, setCor] = useState('');
   const [imei, setImei] = useState('');
   const [valor, setValor] = useState('');
+  const [catalogo, setCatalogo] = useState<ModeloCatalogo[]>([]);
+  const [aparelhoManual, setAparelhoManual] = useState(false);
 
   // Estado do fluxo
   const [aparelho, setAparelho] = useState<Aparelho | null>(null);
@@ -131,6 +151,105 @@ export function NovaProtecao() {
   function falha(err: unknown, fallback: string) {
     setErros([err instanceof ApiError ? err.message : fallback]);
   }
+
+  /* --------------- Catálogo de modelos (preenchimento rápido) ------------ */
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        const itens: ModeloCatalogo[] = [];
+        let pagina = 1;
+        for (;;) {
+          const resp = await apiFetch<Paginacao<ModeloCatalogo>>('/modelos-aparelho', {
+            query: { pagina, porPagina: 100 },
+          });
+          itens.push(...resp.itens);
+          if (itens.length >= resp.total || resp.itens.length === 0) break;
+          pagina += 1;
+        }
+        if (!cancelado) setCatalogo(itens.filter((m) => m.ativo !== false));
+      } catch {
+        // sem catálogo (offline/erro) → o formulário segue com digitação manual
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  const usarCatalogo = catalogo.length > 0 && !aparelhoManual;
+  const marcas = useMemo(
+    () => [...new Set(catalogo.map((m) => m.marca))].sort((a, b) => a.localeCompare(b)),
+    [catalogo],
+  );
+  const modelosDaMarca = useMemo(
+    () => [...new Set(catalogo.filter((m) => m.marca === marca).map((m) => m.modelo))],
+    [catalogo, marca],
+  );
+  const opcoesGb = useMemo(
+    () =>
+      catalogo
+        .filter((m) => m.marca === marca && m.modelo === modelo)
+        .sort((a, b) => a.armazenamentoGb - b.armazenamentoGb),
+    [catalogo, marca, modelo],
+  );
+
+  function escolherGb(entrada: ModeloCatalogo) {
+    setArmazenamento(String(entrada.armazenamentoGb));
+    setValor(valorEmCampo(entrada.valorReferencia));
+  }
+
+  function escolherModelo(novoModelo: string) {
+    setModelo(novoModelo);
+    const opcoes = catalogo
+      .filter((m) => m.marca === marca && m.modelo === novoModelo)
+      .sort((a, b) => a.armazenamentoGb - b.armazenamentoGb);
+    // um único armazenamento no catálogo → já preenche GB e valor
+    if (opcoes.length === 1) escolherGb(opcoes[0]);
+    else {
+      setArmazenamento('');
+      setValor('');
+    }
+  }
+
+  /* --------------- Cliente já cadastrado: autopreenche pelo CPF ---------- */
+
+  const cpfBuscadoRef = useRef('');
+  useEffect(() => {
+    const d = apenasDigitos(cpf);
+    if (d.length !== 11) {
+      cpfBuscadoRef.current = '';
+      setClienteEncontrado(null);
+      return;
+    }
+    if (d === cpfBuscadoRef.current) return;
+    cpfBuscadoRef.current = d;
+    let cancelado = false;
+    (async () => {
+      try {
+        const pagina = await apiFetch<Paginacao<Cliente>>('/clientes', {
+          query: { busca: d, porPagina: 5 },
+        });
+        if (cancelado) return;
+        const existente = pagina.itens.find((c) => apenasDigitos(c.cpf) === d);
+        if (!existente) {
+          setClienteEncontrado(null);
+          return;
+        }
+        setNome(existente.nome);
+        if (existente.telefoneWhatsapp) setTelefone(mascararTelefone(existente.telefoneWhatsapp));
+        if (existente.email) setEmail(existente.email);
+        if (existente.nascimento) setNascimento(existente.nascimento.slice(0, 10));
+        setClienteEncontrado(existente.nome);
+      } catch {
+        // busca é só conveniência — em erro, o vendedor digita normalmente
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [cpf]);
 
   /* ------------------------- Etapa 1: cliente+aparelho ------------------- */
 
@@ -395,6 +514,11 @@ export function NovaProtecao() {
                     value={cpf}
                     onChange={(e) => setCpf(mascararCpf(e.target.value))}
                   />
+                  {clienteEncontrado && (
+                    <p className="mt-1 text-xs text-sol-verde" aria-live="polite">
+                      Cliente já cadastrado — dados preenchidos.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="nasc" className="rotulo">
@@ -443,62 +567,176 @@ export function NovaProtecao() {
               <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">
                 Aparelho
               </h2>
-              <div className="mb-3 grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="marca" className="rotulo">
-                    Marca
-                  </label>
-                  <input
-                    id="marca"
-                    className="campo"
-                    required
-                    placeholder="Apple"
-                    value={marca}
-                    onChange={(e) => setMarca(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="modelo" className="rotulo">
-                    Modelo
-                  </label>
-                  <input
-                    id="modelo"
-                    className="campo"
-                    required
-                    placeholder="iPhone 15"
-                    value={modelo}
-                    onChange={(e) => setModelo(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="mb-3 grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="gb" className="rotulo">
-                    Armazenamento (GB)
-                  </label>
-                  <input
-                    id="gb"
-                    className="campo"
-                    required
-                    inputMode="numeric"
-                    placeholder="128"
-                    value={armazenamento}
-                    onChange={(e) => setArmazenamento(e.target.value.replace(/\D/g, ''))}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="cor" className="rotulo">
-                    Cor
-                  </label>
-                  <input
-                    id="cor"
-                    className="campo"
-                    placeholder="Azul"
-                    value={cor}
-                    onChange={(e) => setCor(e.target.value)}
-                  />
-                </div>
-              </div>
+              {usarCatalogo ? (
+                <>
+                  <div className="mb-3 grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="marca" className="rotulo">
+                        Marca
+                      </label>
+                      <select
+                        id="marca"
+                        className="campo"
+                        required
+                        value={marca}
+                        onChange={(e) => {
+                          setMarca(e.target.value);
+                          setModelo('');
+                          setArmazenamento('');
+                          setValor('');
+                        }}
+                      >
+                        <option value="">Selecione…</option>
+                        {marcas.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="modelo" className="rotulo">
+                        Modelo
+                      </label>
+                      <select
+                        id="modelo"
+                        className="campo"
+                        required
+                        disabled={!marca}
+                        value={modelo}
+                        onChange={(e) => escolherModelo(e.target.value)}
+                      >
+                        <option value="">Selecione…</option>
+                        {modelosDaMarca.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mb-3 grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="gb" className="rotulo">
+                        Armazenamento
+                      </label>
+                      <select
+                        id="gb"
+                        className="campo"
+                        required
+                        disabled={!modelo}
+                        value={armazenamento}
+                        onChange={(e) => {
+                          const entrada = opcoesGb.find(
+                            (m) => String(m.armazenamentoGb) === e.target.value,
+                          );
+                          if (entrada) escolherGb(entrada);
+                          else setArmazenamento(e.target.value.replace(/\D/g, ''));
+                        }}
+                      >
+                        <option value="">Selecione…</option>
+                        {opcoesGb.map((m) => (
+                          <option key={m.id} value={String(m.armazenamentoGb)}>
+                            {m.armazenamentoGb} GB
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="cor" className="rotulo">
+                        Cor
+                      </label>
+                      <input
+                        id="cor"
+                        className="campo"
+                        placeholder="Azul"
+                        value={cor}
+                        onChange={(e) => setCor(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <p className="mb-3 text-xs text-slate-400">
+                    Aparelho fora do catálogo?{' '}
+                    <button
+                      type="button"
+                      className="font-semibold text-sol-azul underline"
+                      onClick={() => setAparelhoManual(true)}
+                    >
+                      Digitar manualmente
+                    </button>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mb-3 grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="marca" className="rotulo">
+                        Marca
+                      </label>
+                      <input
+                        id="marca"
+                        className="campo"
+                        required
+                        placeholder="Apple"
+                        value={marca}
+                        onChange={(e) => setMarca(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="modelo" className="rotulo">
+                        Modelo
+                      </label>
+                      <input
+                        id="modelo"
+                        className="campo"
+                        required
+                        placeholder="iPhone 15"
+                        value={modelo}
+                        onChange={(e) => setModelo(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="mb-3 grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="gb" className="rotulo">
+                        Armazenamento (GB)
+                      </label>
+                      <input
+                        id="gb"
+                        className="campo"
+                        required
+                        inputMode="numeric"
+                        placeholder="128"
+                        value={armazenamento}
+                        onChange={(e) => setArmazenamento(e.target.value.replace(/\D/g, ''))}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="cor" className="rotulo">
+                        Cor
+                      </label>
+                      <input
+                        id="cor"
+                        className="campo"
+                        placeholder="Azul"
+                        value={cor}
+                        onChange={(e) => setCor(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  {catalogo.length > 0 && (
+                    <p className="mb-3 text-xs text-slate-400">
+                      <button
+                        type="button"
+                        className="font-semibold text-sol-azul underline"
+                        onClick={() => setAparelhoManual(false)}
+                      >
+                        Voltar para o catálogo
+                      </button>
+                    </p>
+                  )}
+                </>
+              )}
               <div className="mb-3">
                 <label htmlFor="imei" className="rotulo">
                   IMEI <span className="font-normal text-slate-400">(disque *#06#)</span>
