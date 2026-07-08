@@ -4,6 +4,7 @@ import { FormaPagamento, type Paginacao } from '@solatium/shared';
 import { Header } from '../components/Header';
 import { apiFetch, ApiError } from '../lib/api';
 import { apenasDigitos, imeiValido } from '../lib/imei';
+import { cpfValido } from '../lib/cpf';
 
 /* ------------------------------------------------------------------------ */
 /* Tipos das respostas usadas no fluxo                                       */
@@ -147,7 +148,9 @@ export function NovaProtecao() {
   const [telefone, setTelefone] = useState('');
   const [email, setEmail] = useState('');
   const [nascimento, setNascimento] = useState('');
-  const [clienteEncontrado, setClienteEncontrado] = useState<string | null>(null);
+  const [avisoCpf, setAvisoCpf] = useState<string | null>(null);
+  const [buscandoCpf, setBuscandoCpf] = useState(false);
+  const [avisoImei, setAvisoImei] = useState<string | null>(null);
   const [propostaCodigo, setPropostaCodigo] = useState<string | null>(null);
 
   // Dados do aparelho
@@ -261,6 +264,13 @@ export function NovaProtecao() {
     [catalogo, marca, modelo],
   );
 
+  // Valor veio da tabela do catálogo → somente leitura (evita divergência
+  // entre o capital segurado e o voucher/franquia calculados a partir dele).
+  const valorDoCatalogo =
+    usarCatalogo &&
+    valor !== '' &&
+    opcoesGb.some((m) => String(m.armazenamentoGb) === armazenamento);
+
   function escolherGb(entrada: ModeloCatalogo) {
     setArmazenamento(String(entrada.armazenamentoGb));
     setValor(valorEmCampo(entrada.valorReferencia));
@@ -279,42 +289,101 @@ export function NovaProtecao() {
     }
   }
 
-  /* --------------- Cliente já cadastrado: autopreenche pelo CPF ---------- */
+  /* --------------- CPF: cadastro próprio → consulta externa (KYC) -------- */
 
   useEffect(() => {
     const d = apenasDigitos(cpf);
-    if (d.length !== 11) {
+    if (!cpfValido(d)) {
       cpfBuscadoRef.current = '';
-      setClienteEncontrado(null);
+      setAvisoCpf(null);
       return;
     }
     if (d === cpfBuscadoRef.current) return;
     cpfBuscadoRef.current = d;
     let cancelado = false;
     (async () => {
+      setBuscandoCpf(true);
       try {
         const pagina = await apiFetch<Paginacao<Cliente>>('/clientes', {
           query: { busca: d, porPagina: 5 },
         });
         if (cancelado) return;
         const existente = pagina.itens.find((c) => apenasDigitos(c.cpf) === d);
-        if (!existente) {
-          setClienteEncontrado(null);
+        if (existente) {
+          setNome(existente.nome);
+          if (existente.telefoneWhatsapp) setTelefone(mascararTelefone(existente.telefoneWhatsapp));
+          if (existente.email) setEmail(existente.email);
+          if (existente.nascimento) setNascimento(existente.nascimento.slice(0, 10));
+          setAvisoCpf('Cliente já cadastrado — dados preenchidos.');
           return;
         }
-        setNome(existente.nome);
-        if (existente.telefoneWhatsapp) setTelefone(mascararTelefone(existente.telefoneWhatsapp));
-        if (existente.email) setEmail(existente.email);
-        if (existente.nascimento) setNascimento(existente.nascimento.slice(0, 10));
-        setClienteEncontrado(existente.nome);
+        // Não é cliente ainda → consulta externa (auditada no backend / LGPD).
+        try {
+          const kyc = await apiFetch<{ nome: string; nascimento?: string | null }>(`/kyc/cpf/${d}`);
+          if (cancelado) return;
+          if (kyc?.nome) {
+            setNome(kyc.nome);
+            if (kyc.nascimento) setNascimento(kyc.nascimento.slice(0, 10));
+            setAvisoCpf('Dados localizados na consulta de CPF — confira antes de seguir.');
+            return;
+          }
+        } catch {
+          // 501 (provedor não configurado), 404 ou instabilidade → digitação manual
+        }
+        setAvisoCpf(null);
       } catch {
         // busca é só conveniência — em erro, o vendedor digita normalmente
+      } finally {
+        if (!cancelado) setBuscandoCpf(false);
       }
     })();
     return () => {
       cancelado = true;
     };
   }, [cpf]);
+
+  /* --------------- IMEI → TAC: identifica o modelo pela base ------------- */
+
+  const tacBuscadoRef = useRef('');
+  useEffect(() => {
+    if (!imeiOk) return;
+    // só sugere se o vendedor ainda não escolheu marca/modelo
+    if (marca || modelo) return;
+    const tac = imeiDigitos.slice(0, 8);
+    if (tac === tacBuscadoRef.current) return;
+    tacBuscadoRef.current = tac;
+    let cancelado = false;
+    (async () => {
+      try {
+        const r = await apiFetch<{
+          encontrado: boolean;
+          marca?: string;
+          modelo?: string;
+          armazenamentoGb?: number;
+        }>(`/aparelhos/tac/${tac}`);
+        if (cancelado || !r.encontrado || !r.marca || !r.modelo) return;
+        const doCatalogo = catalogo.filter((m) => m.marca === r.marca && m.modelo === r.modelo);
+        if (doCatalogo.length > 0 && !aparelhoManual) {
+          setMarca(r.marca);
+          setModelo(r.modelo);
+          const gb = doCatalogo.find((m) => m.armazenamentoGb === r.armazenamentoGb);
+          if (gb) escolherGb(gb);
+        } else {
+          setAparelhoManual(true);
+          setMarca(r.marca);
+          setModelo(r.modelo);
+          if (r.armazenamentoGb) setArmazenamento(String(r.armazenamentoGb));
+        }
+        setAvisoImei('Modelo identificado pelo IMEI — confira.');
+      } catch {
+        // identificação é conveniência — sem ela o fluxo segue normal
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imeiOk, imeiDigitos, marca, modelo, catalogo, aparelhoManual]);
 
   /* ------------------------- Etapa 1: cliente+aparelho ------------------- */
 
@@ -352,7 +421,7 @@ export function NovaProtecao() {
     const telDigitos = apenasDigitos(telefone);
     const gb = Number(armazenamento);
     const locais: string[] = [];
-    if (cpfDigitos.length !== 11) locais.push('CPF deve ter 11 dígitos.');
+    if (!cpfValido(cpfDigitos)) locais.push('CPF inválido — confira os dígitos.');
     if (telDigitos.length < 10) locais.push('Telefone (WhatsApp) inválido.');
     if (!imeiOk) locais.push('IMEI inválido (15 dígitos + dígito verificador).');
     if (!Number.isInteger(gb) || gb <= 0) locais.push('Informe o armazenamento em GB.');
@@ -585,11 +654,24 @@ export function NovaProtecao() {
                     value={cpf}
                     onChange={(e) => setCpf(mascararCpf(e.target.value))}
                   />
-                  {clienteEncontrado && (
-                    <p className="mt-1 text-xs text-sol-verde" aria-live="polite">
-                      Cliente já cadastrado — dados preenchidos.
+                  {buscandoCpf && (
+                    <p className="mt-1 text-xs text-slate-400" aria-live="polite">
+                      Buscando dados do CPF…
                     </p>
                   )}
+                  {!buscandoCpf && avisoCpf && (
+                    <p className="mt-1 text-xs text-sol-verde" aria-live="polite">
+                      {avisoCpf}
+                    </p>
+                  )}
+                  {!buscandoCpf &&
+                    !avisoCpf &&
+                    apenasDigitos(cpf).length === 11 &&
+                    !cpfValido(cpf) && (
+                      <p className="mt-1 text-xs text-red-500" aria-live="polite">
+                        CPF inválido — confira os dígitos.
+                      </p>
+                    )}
                 </div>
                 <div>
                   <label htmlFor="nasc" className="rotulo">
@@ -830,6 +912,11 @@ export function NovaProtecao() {
                     {imeiOk ? 'IMEI válido.' : `IMEI inválido — ${imeiDigitos.length}/15 dígitos.`}
                   </p>
                 )}
+                {avisoImei && (
+                  <p className="mt-1 text-xs text-sol-verde" aria-live="polite">
+                    {avisoImei}
+                  </p>
+                )}
               </div>
               <div>
                 <label htmlFor="valor" className="rotulo">
@@ -837,13 +924,20 @@ export function NovaProtecao() {
                 </label>
                 <input
                   id="valor"
-                  className="campo"
+                  className={`campo ${valorDoCatalogo ? 'bg-slate-100 text-slate-600' : ''}`}
                   required
+                  readOnly={valorDoCatalogo}
                   inputMode="decimal"
                   placeholder="3500,00"
                   value={valor}
                   onChange={(e) => setValor(e.target.value.replace(/[^\d.,]/g, ''))}
                 />
+                {valorDoCatalogo && (
+                  <p className="mt-1 text-xs text-slate-400">
+                    Preenchido pela tabela de referência do catálogo — define o capital segurado e o
+                    voucher. Para editar, use o modo manual.
+                  </p>
+                )}
               </div>
             </section>
 
