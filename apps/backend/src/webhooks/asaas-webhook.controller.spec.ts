@@ -4,12 +4,17 @@ import { AsaasWebhookController } from './asaas-webhook.controller';
 /**
  * Idempotência do M3/M4: webhook duplicado NUNCA gera segundo certificado.
  * (Camadas seguintes: jobId único no BullMQ e unique(contratoId) no banco.)
+ * M5: pagamento reativa certificado suspenso; estorno da 1ª cobrança cancela.
  */
 describe('AsaasWebhookController', () => {
   const TOKEN = 'segredo-webhook';
 
   function montar(
-    overrides: { certificadoExistente?: boolean; pagamento?: Record<string, unknown> | null } = {},
+    overrides: {
+      certificadoExistente?: boolean;
+      pagamento?: Record<string, unknown> | null;
+      contrato?: Record<string, unknown> | null;
+    } = {},
   ) {
     const prisma = {
       pagamento: {
@@ -28,12 +33,23 @@ describe('AsaasWebhookController', () => {
           .fn()
           .mockResolvedValue(overrides.certificadoExistente ? { id: 'cert-1' } : null),
       },
-      contrato: { findUnique: jest.fn().mockResolvedValue(null) },
+      contrato: {
+        findUnique: jest.fn().mockResolvedValue(overrides.contrato ?? null),
+      },
     };
     const fila = { add: jest.fn().mockResolvedValue({}) };
     const config = { get: jest.fn().mockReturnValue(TOKEN) };
-    const controller = new AsaasWebhookController(prisma as never, config as never, fila as never);
-    return { controller, prisma, fila };
+    const inadimplencia = {
+      reativarSeSuspenso: jest.fn().mockResolvedValue(false),
+      processarEstorno: jest.fn().mockResolvedValue(undefined),
+    };
+    const controller = new AsaasWebhookController(
+      prisma as never,
+      config as never,
+      fila as never,
+      inadimplencia as never,
+    );
+    return { controller, prisma, fila, inadimplencia };
   }
 
   const evento = (id = 'asaas-pay-1') => ({
@@ -48,6 +64,11 @@ describe('AsaasWebhookController', () => {
     );
   });
 
+  it('rejeita token de tamanho diferente (comparação em tempo constante)', async () => {
+    const { controller } = montar();
+    await expect(controller.receber(evento(), 'x')).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
   it('1ª confirmação: marca pagamento CONFIRMADO e enfileira emissão com jobId do contrato', async () => {
     const { controller, prisma, fila } = montar();
     await controller.receber(evento(), TOKEN);
@@ -59,6 +80,12 @@ describe('AsaasWebhookController', () => {
       { contratoId: 'contrato-1' },
       { jobId: 'emitir-contrato-1' },
     );
+  });
+
+  it('confirmação tenta reativar certificado suspenso (M5)', async () => {
+    const { controller, inadimplencia } = montar();
+    await controller.receber(evento(), TOKEN);
+    expect(inadimplencia.reativarSeSuspenso).toHaveBeenCalledWith('contrato-1');
   });
 
   it('webhook DUPLICADO com certificado já emitido: NÃO enfileira de novo', async () => {
@@ -84,5 +111,50 @@ describe('AsaasWebhookController', () => {
       expect.objectContaining({ data: { status: 'VENCIDO' } }),
     );
     expect(fila.add).not.toHaveBeenCalled();
+  });
+
+  it('PAYMENT_OVERDUE de parcela 2+ desconhecida: registra VENCIDO pelo externalReference', async () => {
+    const { controller, prisma } = montar({
+      pagamento: null,
+      contrato: { id: 'contrato-1', clienteId: 'cliente-1' },
+    });
+    await controller.receber(
+      {
+        event: 'PAYMENT_OVERDUE',
+        payment: {
+          id: 'asaas-parcela-2',
+          externalReference: 'contrato-1',
+          billingType: 'CREDIT_CARD',
+          value: 29.9,
+          dueDate: '2026-07-01',
+        },
+      },
+      TOKEN,
+    );
+    expect(prisma.pagamento.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          asaasId: 'asaas-parcela-2',
+          status: 'VENCIDO',
+          contratoId: 'contrato-1',
+        }),
+      }),
+    );
+  });
+
+  it('PAYMENT_REFUNDED da 1ª cobrança: marca ESTORNADO e cancela a cobertura', async () => {
+    const { controller, prisma, inadimplencia } = montar({
+      pagamento: {
+        id: 'pag-1',
+        status: 'CONFIRMADO',
+        contratoId: 'contrato-1',
+        primeiraCobranca: true,
+      },
+    });
+    await controller.receber({ event: 'PAYMENT_REFUNDED', payment: { id: 'asaas-pay-1' } }, TOKEN);
+    expect(prisma.pagamento.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'ESTORNADO' } }),
+    );
+    expect(inadimplencia.processarEstorno).toHaveBeenCalledWith('contrato-1');
   });
 });

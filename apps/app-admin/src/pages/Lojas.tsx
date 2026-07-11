@@ -4,6 +4,7 @@ import { LojaStatus } from '@solatium/shared';
 import DataTable from '../components/DataTable';
 import type { Coluna } from '../components/DataTable';
 import Modal from '../components/Modal';
+import ImportCsvModal from '../components/ImportCsvModal';
 import { Campo, CampoSelect } from '../components/Campo';
 import { usePaginado } from '../lib/usePaginado';
 import { api, ApiError } from '../lib/api';
@@ -66,6 +67,7 @@ function corStatus(status?: LojaStatus): string {
 export default function Lojas() {
   const lista = usePaginado<Loja>('lojas');
   const [modalAberto, setModalAberto] = useState(false);
+  const [importAberto, setImportAberto] = useState(false);
   const [editando, setEditando] = useState<Loja | null>(null);
   const [form, setForm] = useState<LojaForm>(formVazio);
   const [erroForm, setErroForm] = useState<string | null>(null);
@@ -214,10 +216,35 @@ export default function Lojas() {
         total={lista.total}
         onPagina={lista.setPagina}
         acoes={
-          <button type="button" className={btnPrimary} onClick={abrirCriacao}>
-            Nova loja
-          </button>
+          <div className="flex gap-2">
+            <button type="button" className={btnSecundario} onClick={() => setImportAberto(true)}>
+              Importar CSV
+            </button>
+            <button type="button" className={btnPrimary} onClick={abrirCriacao}>
+              Nova loja
+            </button>
+          </div>
         }
+      />
+
+      <ImportCsvModal
+        aberto={importAberto}
+        onFechar={() => setImportAberto(false)}
+        titulo="Importar lojas em massa"
+        endpoint="/lojas/importar"
+        colunas={[
+          'nome',
+          'cnpj',
+          'email',
+          'telefone',
+          'responsavel',
+          'cep',
+          'cidade',
+          'uf',
+          'comissao_pct',
+          'modo_comissao',
+        ]}
+        onImportou={() => void lista.recarregar()}
       />
 
       <Modal

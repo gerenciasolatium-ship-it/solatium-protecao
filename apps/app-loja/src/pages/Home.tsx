@@ -68,10 +68,24 @@ export function Home() {
           />
           <Atalho
             titulo="Minhas Vendas"
-            descricao="Comissões e histórico"
+            descricao="Comissões, sinistralidade e histórico"
             emoji="📈"
             variante="cinza"
-            onClick={() => window.alert('Painel de vendas e comissões chega em breve.')}
+            onClick={() => navigate('/vendas')}
+          />
+          <Atalho
+            titulo="Sinistros"
+            descricao="Abrir e acompanhar sinistros"
+            emoji="🚨"
+            variante="cinza"
+            onClick={() => navigate('/sinistros')}
+          />
+          <Atalho
+            titulo="Resgatar Voucher"
+            descricao="Baixa do voucher no balcão"
+            emoji="🎟️"
+            variante="cinza"
+            onClick={() => navigate('/voucher')}
           />
         </div>
       </main>

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { FormaPagamento, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AparelhosService } from '../aparelhos/aparelhos.service';
 import { UsuarioAutenticado } from '../common/decorators/current-user.decorator';
 import {
   CobrancaResult,
@@ -36,6 +37,7 @@ export class ContratosService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly aparelhos: AparelhosService,
     @Inject(PAYMENT_PROVIDER) private readonly pagamento: PaymentProvider,
   ) {}
 
@@ -53,6 +55,13 @@ export class ContratosService {
       throw new ConflictException(
         'Esta vistoria já tem um contrato. Consulte-o em vez de criar outro.',
       );
+    }
+
+    // Re-checa o IMEI aqui (a trava da vistoria roda só na criação dela): duas
+    // vistorias aprovadas do mesmo aparelho não podem virar duas emissões —
+    // o unique parcial de certificado ATIVO mataria o job de emissão pós-pagamento.
+    if (await this.aparelhos.imeiTemProtecaoAtiva(vistoria.aparelho.imei)) {
+      throw new ConflictException('Este IMEI já possui uma proteção ativa no sistema.');
     }
 
     const plano = await this.prisma.plano.findUnique({ where: { id: dto.planoId } });
@@ -106,11 +115,25 @@ export class ContratosService {
   async novaCobranca(id: string, dto: NovaCobrancaDto, usuario: UsuarioAutenticado) {
     const contrato = await this.prisma.contrato.findUnique({
       where: { id },
-      include: { plano: true, certificado: true },
+      include: {
+        plano: true,
+        certificado: true,
+        pagamentos: { where: { status: { in: ['PENDENTE', 'CONFIRMADO'] } } },
+      },
     });
     if (!contrato) throw new NotFoundException('Contrato não encontrado.');
     this.autorizarLoja(contrato.lojaId, usuario);
     if (contrato.certificado) throw new ConflictException('Contrato já pago e emitido.');
+    if (contrato.pagamentos.some((p) => p.status === 'CONFIRMADO')) {
+      throw new ConflictException(
+        'Este contrato já tem pagamento confirmado — o certificado será emitido em instantes.',
+      );
+    }
+
+    // Cancela a cobrança/assinatura anterior no provedor ANTES de criar outra:
+    // sem isso a assinatura antiga segue cobrando o cartão (órfã) e o cliente
+    // pode pagar duas vezes ("cartão demorou → gerou Pix → ambos confirmam").
+    await this.cancelarCobrancaAnterior(contrato.id, contrato.checkout);
 
     const { valorCobranca, premioTotal, parcelas } = this.precificar(
       contrato.plano,
@@ -266,6 +289,25 @@ export class ContratosService {
     });
 
     return cobranca;
+  }
+
+  /**
+   * Cancela no provedor a cobrança/assinatura corrente do contrato e marca os
+   * pagamentos pendentes como CANCELADO. Best-effort: se a cobrança antiga já
+   * tiver sido paga, o cancelamento falha silenciosamente e o webhook de
+   * confirmação dela emite o certificado normalmente (idempotente).
+   */
+  private async cancelarCobrancaAnterior(contratoId: string, checkout: Prisma.JsonValue | null) {
+    const dados = (checkout ?? {}) as { asaasId?: string; assinaturaId?: string };
+    if (dados.assinaturaId) {
+      await this.pagamento.cancelarAssinatura(dados.assinaturaId);
+    } else if (dados.asaasId) {
+      await this.pagamento.cancelarCobranca(dados.asaasId);
+    }
+    await this.prisma.pagamento.updateMany({
+      where: { contratoId, status: 'PENDENTE' },
+      data: { status: 'CANCELADO' },
+    });
   }
 
   private autorizarLoja(lojaId: string, usuario: UsuarioAutenticado) {

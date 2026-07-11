@@ -172,4 +172,15 @@ export const api = {
   remover(recurso: string, id: string): Promise<void> {
     return request<void>('DELETE', `/${recurso}/${id}`);
   },
+
+  // --- Chamadas fora do CRUD (dashboards, ações, importação) ---
+  get<T>(caminho: string): Promise<T> {
+    return request<T>('GET', caminho);
+  },
+  post<T>(caminho: string, corpo?: unknown): Promise<T> {
+    return request<T>('POST', caminho, corpo ?? {});
+  },
+  patch<T>(caminho: string, corpo?: unknown): Promise<T> {
+    return request<T>('PATCH', caminho, corpo ?? {});
+  },
 };

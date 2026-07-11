@@ -139,4 +139,25 @@ export class AsaasProvider implements PaymentProvider {
 
     return resultado;
   }
+
+  /** Best-effort: cobrança já paga/estornada não é cancelável — retorna false. */
+  async cancelarCobranca(provedorId: string): Promise<{ cancelada: boolean }> {
+    try {
+      await this.request<{ deleted: boolean }>('DELETE', `/payments/${provedorId}`);
+      return { cancelada: true };
+    } catch (erro) {
+      this.logger.warn(`Não foi possível cancelar a cobrança ${provedorId}: ${erro}`);
+      return { cancelada: false };
+    }
+  }
+
+  async cancelarAssinatura(assinaturaId: string): Promise<{ cancelada: boolean }> {
+    try {
+      await this.request<{ deleted: boolean }>('DELETE', `/subscriptions/${assinaturaId}`);
+      return { cancelada: true };
+    } catch (erro) {
+      this.logger.warn(`Não foi possível cancelar a assinatura ${assinaturaId}: ${erro}`);
+      return { cancelada: false };
+    }
+  }
 }

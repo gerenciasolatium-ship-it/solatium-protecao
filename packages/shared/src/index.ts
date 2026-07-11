@@ -58,6 +58,7 @@ export const PagamentoStatus = {
   CONFIRMADO: 'CONFIRMADO',
   VENCIDO: 'VENCIDO',
   ESTORNADO: 'ESTORNADO',
+  CANCELADO: 'CANCELADO',
 } as const;
 export type PagamentoStatus = (typeof PagamentoStatus)[keyof typeof PagamentoStatus];
 

@@ -6,6 +6,9 @@ import { Clientes } from './pages/Clientes';
 import { NovoCliente } from './pages/NovoCliente';
 import { NovaProtecao } from './pages/NovaProtecao';
 import { ValidarCertificado } from './pages/ValidarCertificado';
+import { Sinistros } from './pages/Sinistros';
+import { ResgatarVoucher } from './pages/ResgatarVoucher';
+import { MinhasVendas } from './pages/MinhasVendas';
 
 export function App() {
   return (
@@ -42,6 +45,30 @@ export function App() {
         element={
           <ProtectedRoute>
             <NovoCliente />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/sinistros"
+        element={
+          <ProtectedRoute>
+            <Sinistros />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/voucher"
+        element={
+          <ProtectedRoute>
+            <ResgatarVoucher />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/vendas"
+        element={
+          <ProtectedRoute>
+            <MinhasVendas />
           </ProtectedRoute>
         }
       />
