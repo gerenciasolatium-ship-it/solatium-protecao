@@ -1,11 +1,20 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
 import { Role } from '@solatium/shared';
+import { IsString, MaxLength, MinLength } from 'class-validator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { PaginacaoQueryDto } from '../common/dto/paginacao.dto';
 import { LojasService } from './lojas.service';
 import { CreateLojaDto } from './dto/create-loja.dto';
 import { UpdateLojaDto } from './dto/update-loja.dto';
+
+export class ImportarCsvDto {
+  @ApiProperty({ description: 'Conteúdo do arquivo CSV (cabeçalho na 1ª linha).' })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(2_000_000)
+  csv!: string;
+}
 
 @ApiTags('lojas')
 @ApiBearerAuth()
@@ -18,6 +27,16 @@ export class LojasController {
   @ApiOperation({ summary: 'Cadastra uma nova loja parceira.' })
   create(@Body() dto: CreateLojaDto) {
     return this.lojas.create(dto);
+  }
+
+  @Post('importar')
+  @Roles(Role.ADMIN, Role.OPERADOR)
+  @ApiOperation({
+    summary:
+      'Importação em massa via CSV (nome;cnpj;email;telefone;responsavel;cep;cidade;uf;comissao_pct;modo_comissao). Relatório por linha.',
+  })
+  importar(@Body() dto: ImportarCsvDto) {
+    return this.lojas.importar(dto.csv);
   }
 
   @Get()

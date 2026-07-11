@@ -72,6 +72,8 @@ enum PagamentoStatus {
   CONFIRMADO
   VENCIDO
   ESTORNADO
+  // Cobrança substituída no balcão ("não perder venda") e cancelada no provedor.
+  CANCELADO
 }
 
 enum SinistroStatus {
@@ -170,6 +172,7 @@ model Loja {
   repasses      Repasse[]
   chavesApi     ParceiroChaveApi[]
   propostasExternas PropostaExterna[]
+  sinistros     Sinistro[]
 
   @@map("lojas")
 }
@@ -421,6 +424,7 @@ model Certificado {
   cobrancasLog CobrancaLog[]
   comissoes  Comissao[]
 
+  @@index([lojaId, status])
   @@map("certificados")
 }
 
@@ -466,6 +470,7 @@ model Pagamento {
 
   cobrancasLog CobrancaLog[]
 
+  @@index([status, vencimento])
   @@map("pagamentos")
 }
 
@@ -493,16 +498,23 @@ model Sinistro {
   certificado       Certificado    @relation(fields: [certificadoId], references: [id])
   clienteId         String
   cliente           Cliente        @relation(fields: [clienteId], references: [id])
+  // Loja de origem do certificado (denormalizada p/ sinistralidade por loja — M13).
+  lojaId            String
+  loja              Loja           @relation(fields: [lojaId], references: [id])
   status            SinistroStatus @default(ABERTO)
   boUrl             String?
+  boData            DateTime?
   relato            String?
   alertasFraude     Json?
+  motivoNegativa    String?
+  decididoEm        DateTime?
   valorIndenizacao  Decimal?       @db.Decimal(12, 2)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
   voucher Voucher?
 
+  @@index([lojaId, status])
   @@map("sinistros")
 }
 
@@ -596,6 +608,8 @@ model Comissao {
 
 model ContaCorrenteLancamento {
   id             String         @id @default(uuid())
+  // Ordem monotônica do livro-razão (uuid não ordena; createdAt colide no ms).
+  seq            Int            @unique @default(autoincrement())
   lojaId         String
   loja           Loja           @relation(fields: [lojaId], references: [id])
   tipo           LancamentoTipo

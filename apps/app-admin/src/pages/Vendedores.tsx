@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import DataTable from '../components/DataTable';
 import type { Coluna } from '../components/DataTable';
 import Modal from '../components/Modal';
+import ImportCsvModal from '../components/ImportCsvModal';
 import { Campo, CampoSelect } from '../components/Campo';
 import { usePaginado } from '../lib/usePaginado';
 import { api, ApiError } from '../lib/api';
@@ -31,6 +32,7 @@ export default function Vendedores() {
   const lista = usePaginado<Vendedor>('vendedores');
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [modalAberto, setModalAberto] = useState(false);
+  const [importAberto, setImportAberto] = useState(false);
   const [editando, setEditando] = useState<Vendedor | null>(null);
   const [form, setForm] = useState<VendedorForm>(formVazio);
   const [erroForm, setErroForm] = useState<string | null>(null);
@@ -155,10 +157,28 @@ export default function Vendedores() {
         total={lista.total}
         onPagina={lista.setPagina}
         acoes={
-          <button type="button" className={btnPrimary} onClick={abrirCriacao}>
-            Novo vendedor
-          </button>
+          <div className="flex gap-2">
+            <button type="button" className={btnSecundario} onClick={() => setImportAberto(true)}>
+              Importar CSV
+            </button>
+            <button type="button" className={btnPrimary} onClick={abrirCriacao}>
+              Novo vendedor
+            </button>
+          </div>
         }
+      />
+
+      <ImportCsvModal
+        aberto={importAberto}
+        onFechar={() => setImportAberto(false)}
+        titulo="Importar vendedores em massa"
+        endpoint="/vendedores/importar"
+        colunas={['nome', 'cpf', 'loja_cnpj', 'telefone', 'email', 'senha']}
+        extra={{
+          chave: 'senhaPadrao',
+          rotulo: 'Senha inicial padrão (usada nas linhas sem coluna senha)',
+        }}
+        onImportou={() => void lista.recarregar()}
       />
 
       <Modal

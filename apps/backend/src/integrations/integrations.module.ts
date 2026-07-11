@@ -32,6 +32,14 @@ class StubPaymentProvider implements PaymentProvider {
     logger.warn(`[stub] criarCobranca ignorada (ASAAS_API_KEY ausente): R$ ${input.valor}`);
     return { provedorId: 'stub', status: 'NAO_IMPLEMENTADO' };
   }
+  async cancelarCobranca(): Promise<{ cancelada: boolean }> {
+    logger.warn('[stub] cancelarCobranca ignorada (ASAAS_API_KEY ausente)');
+    return { cancelada: false };
+  }
+  async cancelarAssinatura(): Promise<{ cancelada: boolean }> {
+    logger.warn('[stub] cancelarAssinatura ignorada (ASAAS_API_KEY ausente)');
+    return { cancelada: false };
+  }
 }
 
 class StubMessagingProvider implements MessagingProvider {

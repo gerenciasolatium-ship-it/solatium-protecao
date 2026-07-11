@@ -378,5 +378,38 @@ ESTIPULANTE_RAZAO, ESTIPULANTE_CNPJ, SOLATIUM_CNPJ, CONDICOES_GERAIS_URL, SEGURA
       `propostaExterna` no `POST /contratos`. Migration 0005. Doc pro parceiro em
       `docs/API-PARCEIROS.md`. Env nova: `APP_LOJA_URL` (base do link). Falta: tela de
       chaves no app-admin + webhook de eventos pro CRM (v2).
+- [x] **Sprint S4 — sinistros, dashboards, inadimplência e escala (11/07/2026,
+      branch `feat/s4-sinistros-dashboards-inadimplencia`)**:
+      **M6** — módulo `sinistros/` completo: abertura (loja/admin) com alertas
+      antifraude automáticos (precoce <30d, dentro da carência, BO anterior à
+      vigência, CPF reincidente, loja >30%), esteira controlada
+      ABERTO→DOC_PENDENTE→EM_ANALISE→APROVADO/NEGADO (decisão só backoffice; BO
+      obrigatório pra aprovar; negativa exige motivo), voucher automático na
+      aprovação (capital × (1−franquia do PLANO), 90 dias, código `VC-`), resgate
+      na loja de origem (`GET/POST /vouchers/:codigo[/resgatar]`), telas no
+      app-admin (fila+decisão) e app-loja (abrir/acompanhar/resgatar).
+      **M9/M13** — módulo `dashboard/`: `GET /dashboard/resumo` (vidas ativas,
+      vendas/ticket do mês, MRR, inadimplência, sinistralidade 12m com faixas
+      VERDE/AMARELA/VERMELHA e meta 30%, série mensal 12m, ranking de lojas) e
+      `GET /dashboard/loja` (números próprios + saldo conta-corrente + margem em
+      R$ até a faixa verde); tudo agregado no banco (índices novos em
+      certificados/pagamentos/sinistros — preparado pra 3.000+ lojas); dashboard
+      executivo no app-admin (gráficos SVG próprios, paleta validada p/
+      daltonismo, auto-refresh 60s) e "Minhas Vendas" no app-loja.
+      **M5-lite** — módulo `cobranca/`: job BullMQ repetível diário (03:00 BRT)
+      suspende D+15 / cancela D+30 com clawback proporcional e cancelamento da
+      assinatura no Asaas; pagamento durante suspensão reativa com nova carência
+      72h; estorno da 1ª cobrança cancela certificado + clawback.
+      **Cadastro em massa** — `POST /lojas/importar` e `/vendedores/importar`
+      (CSV `;` ou `,`, relatório por linha, limite 1.000) + modal no app-admin.
+      **Auditoria + correções** (docs/RELATORIO-QUALIDADE-S4.md): nova cobrança
+      cancela a anterior no Asaas (assinatura órfã/cobrança dupla — CRÍTICO),
+      advisory lock + `seq` no livro-razão (race no saldo), IMEI re-checado no
+      contrato, email não bloqueia mais atrás do WhatsApp na entrega, OVERDUE de
+      parcela 2+ registrado, webhook com `timingSafeEqual` e P2002 tratado.
+      Migration 0006 (roda no boot). Novo status de pagamento `CANCELADO`.
+      Gate verde: lint + typecheck + **78 testes** + build 4/4.
+      Pendências anotadas no relatório: rate limit (`@nestjs/throttler`), régua
+      M5 completa (D-3/D0/D+3/D+7), liquidação M12, alerta automático M13, borderô.
 - [ ] Sprint atual: **S2** (vistoria antifraude M2 completa + upload R2 + OCR/geo)
-- Última atualização: 08/07/2026
+- Última atualização: 11/07/2026

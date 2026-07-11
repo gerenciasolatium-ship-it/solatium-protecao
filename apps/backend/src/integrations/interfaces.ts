@@ -50,6 +50,13 @@ export interface CobrancaResult {
 export interface PaymentProvider {
   criarCliente(input: ClienteProviderInput): Promise<{ customerId: string }>;
   criarCobranca(input: CobrancaInput): Promise<CobrancaResult>;
+  /**
+   * Cancela uma cobrança avulsa não paga. Best-effort: cobrança já paga ou
+   * inexistente retorna { cancelada: false } (nunca lança) — o chamador decide.
+   */
+  cancelarCobranca(provedorId: string): Promise<{ cancelada: boolean }>;
+  /** Cancela uma assinatura recorrente (evita assinatura órfã cobrando o cartão). */
+  cancelarAssinatura(assinaturaId: string): Promise<{ cancelada: boolean }>;
 }
 
 export interface MensagemInput {

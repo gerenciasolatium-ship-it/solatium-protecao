@@ -177,7 +177,7 @@ export class FinanceiroService {
   async saldoLoja(lojaId: string): Promise<number> {
     const ultimo = await this.prisma.contaCorrenteLancamento.findFirst({
       where: { lojaId },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: { seq: 'desc' },
     });
     return ultimo ? Number(ultimo.saldoApos) : 0;
   }
@@ -193,7 +193,7 @@ export class FinanceiroService {
         where: { lojaId },
         skip: (pagina - 1) * porPagina,
         take: porPagina,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        orderBy: { seq: 'desc' },
       }),
       this.prisma.contaCorrenteLancamento.count({ where: { lojaId } }),
       this.saldoLoja(lojaId),
@@ -237,9 +237,12 @@ export class FinanceiroService {
       memoriaCalculo?: Prisma.InputJsonValue;
     },
   ) {
+    // Serializa lançamentos concorrentes da mesma loja (read-then-write do
+    // saldo). Lock liberado automaticamente no fim da transação.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${entrada.lojaId}))`;
     const ultimo = await tx.contaCorrenteLancamento.findFirst({
       where: { lojaId: entrada.lojaId },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: { seq: 'desc' },
     });
     const saldoAnterior = ultimo ? Number(ultimo.saldoApos) : 0;
     const saldoApos = arredondar2(saldoAnterior + this.delta(entrada.tipo, entrada.valor));

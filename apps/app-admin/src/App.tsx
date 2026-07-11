@@ -8,6 +8,7 @@ import Vendedores from './pages/Vendedores';
 import Planos from './pages/Planos';
 import Modelos from './pages/Modelos';
 import Clientes from './pages/Clientes';
+import Sinistros from './pages/Sinistros';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/planos" element={<Planos />} />
           <Route path="/modelos" element={<Modelos />} />
           <Route path="/clientes" element={<Clientes />} />
+          <Route path="/sinistros" element={<Sinistros />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

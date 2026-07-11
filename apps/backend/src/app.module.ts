@@ -15,6 +15,9 @@ import { FinanceiroModule } from './financeiro/financeiro.module';
 import { VistoriasModule } from './vistorias/vistorias.module';
 import { ContratosModule } from './contratos/contratos.module';
 import { CertificadosModule } from './certificados/certificados.module';
+import { SinistrosModule } from './sinistros/sinistros.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { CobrancaModule } from './cobranca/cobranca.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { ParceirosApiModule } from './parceiros-api/parceiros-api.module';
 import { KycModule } from './kyc/kyc.module';
@@ -55,6 +58,9 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     VistoriasModule,
     ContratosModule,
     CertificadosModule,
+    SinistrosModule,
+    DashboardModule,
+    CobrancaModule,
     WebhooksModule,
     ParceirosApiModule,
     KycModule,

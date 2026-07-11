@@ -148,6 +148,14 @@ export class EmissaoService {
           where: { contratoId: contrato.id },
         });
         if (existente) return existente;
+        // P2002 sem certificado deste contrato = índice parcial de IMEI: outro
+        // contrato do MESMO aparelho emitiu primeiro. Pagamento sem produto —
+        // erro explícito para o dead-letter apontar a ação (estornar/endossar).
+        throw new Error(
+          `Emissão bloqueada: aparelho ${contrato.aparelhoId} (IMEI ${contrato.aparelho.imei}) ` +
+            `já tem proteção ATIVA por outro contrato. Contrato ${contrato.id} PAGO sem emissão — ` +
+            `tratar manualmente (estorno ou endosso).`,
+        );
       }
       throw erro;
     }
@@ -177,15 +185,27 @@ export class EmissaoService {
     const vigenciaFimBr = formatarDataBr(certificado.vigenciaFim);
     const nomeArquivo = `Certificado-${certificado.numero}.pdf`;
 
+    // WhatsApp e email são independentes: falha num canal não pode impedir o
+    // outro. Se o WhatsApp falhar, o erro é relançado NO FIM (retry do job),
+    // mas o email já terá sido tentado — flags por canal evitam reenvio.
+    let erroWhatsapp: Error | null = null;
     if (!certificado.whatsappEnviadoEm) {
       const texto =
         `🎉 ${primeiroNome}, seu aparelho está protegido! Certificado ${certificado.numero} em anexo. ` +
         `Vigência até ${vigenciaFimBr}. Guarde este documento. Qualquer sinistro, é só chamar aqui.`;
-      const { enviado, id } = await this.whatsapp.enviarWhatsapp({
-        telefone: contrato.cliente.telefoneWhatsapp,
-        texto,
-        anexo: { nome: nomeArquivo, base64, contentType: 'application/pdf' },
-      });
+      let enviado = false;
+      let mensagemId: string | undefined;
+      try {
+        const resultado = await this.whatsapp.enviarWhatsapp({
+          telefone: contrato.cliente.telefoneWhatsapp,
+          texto,
+          anexo: { nome: nomeArquivo, base64, contentType: 'application/pdf' },
+        });
+        enviado = resultado.enviado;
+        mensagemId = resultado.id;
+      } catch (erro) {
+        erroWhatsapp = erro instanceof Error ? erro : new Error(String(erro));
+      }
       await this.prisma.notificacaoLog.create({
         data: {
           canal: 'WHATSAPP',
@@ -194,16 +214,20 @@ export class EmissaoService {
           payload: {
             certificadoId: certificado.id,
             telefone: contrato.cliente.telefoneWhatsapp,
-            mensagemId: id,
+            mensagemId,
           },
         },
       });
-      if (!enviado)
-        throw new Error(`Falha no envio WhatsApp do certificado ${certificado.numero} (retry).`);
-      await this.prisma.certificado.update({
-        where: { id: certificado.id },
-        data: { whatsappEnviadoEm: new Date() },
-      });
+      if (enviado) {
+        await this.prisma.certificado.update({
+          where: { id: certificado.id },
+          data: { whatsappEnviadoEm: new Date() },
+        });
+      } else if (!erroWhatsapp) {
+        erroWhatsapp = new Error(
+          `Falha no envio WhatsApp do certificado ${certificado.numero} (retry).`,
+        );
+      }
     }
 
     if (!certificado.emailEnviadoEm && contrato.cliente.email) {
@@ -233,6 +257,9 @@ export class EmissaoService {
         });
       }
     }
+
+    // Só depois de tentar TODOS os canais o job falha (retry do WhatsApp).
+    if (erroWhatsapp) throw erroWhatsapp;
   }
 
   private montarDados(

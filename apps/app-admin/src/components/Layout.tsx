@@ -8,6 +8,7 @@ const links = [
   { to: '/planos', rotulo: 'Planos', fim: false },
   { to: '/modelos', rotulo: 'Modelos', fim: false },
   { to: '/clientes', rotulo: 'Clientes', fim: false },
+  { to: '/sinistros', rotulo: 'Sinistros', fim: false },
 ];
 
 export default function Layout() {
