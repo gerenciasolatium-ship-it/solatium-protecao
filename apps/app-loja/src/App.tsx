@@ -6,6 +6,7 @@ import { Clientes } from './pages/Clientes';
 import { NovoCliente } from './pages/NovoCliente';
 import { NovaProtecao } from './pages/NovaProtecao';
 import { ValidarCertificado } from './pages/ValidarCertificado';
+import { VistoriaRemota } from './pages/VistoriaRemota';
 import { Sinistros } from './pages/Sinistros';
 import { ResgatarVoucher } from './pages/ResgatarVoucher';
 import { MinhasVendas } from './pages/MinhasVendas';
@@ -16,6 +17,8 @@ export function App() {
       <Route path="/login" element={<Login />} />
       {/* Pública: aberta pelo QR code do bilhete (sem login). */}
       <Route path="/validar/:codigo" element={<ValidarCertificado />} />
+      {/* Pública: vistoria remota aberta pelo cliente via link do WhatsApp. */}
+      <Route path="/vistoria/:token" element={<VistoriaRemota />} />
       <Route
         path="/protecao/nova"
         element={

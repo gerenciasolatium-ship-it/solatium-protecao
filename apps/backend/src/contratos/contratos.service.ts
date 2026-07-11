@@ -51,10 +51,11 @@ export class ContratosService {
     if (vistoria.status !== 'APROVADA') {
       throw new ConflictException('Só é possível contratar com vistoria APROVADA.');
     }
+    // Vistoria já tem contrato? Se ele ainda não pagou/emitiu, RETOMA a venda
+    // (cancela a cobrança antiga e gera outra) em vez de travar o balcão —
+    // ex.: Asaas falhou na primeira tentativa (sem chave Pix, instabilidade).
     if (vistoria.contrato) {
-      throw new ConflictException(
-        'Esta vistoria já tem um contrato. Consulte-o em vez de criar outro.',
-      );
+      return this.retomarContrato(vistoria.contrato.id, dto, usuario);
     }
 
     // Re-checa o IMEI aqui (a trava da vistoria roda só na criação dela): duas
@@ -107,7 +108,65 @@ export class ContratosService {
       });
     }
 
+    try {
+      await this.gerarCobranca(contrato.id, dto.formaPagamento, parcelas, valorCobranca);
+    } catch (erro) {
+      // Cobrança falhou → desfaz o contrato pra vistoria não ficar travada
+      // ("Esta vistoria já tem um contrato") e o vendedor poder tentar de novo.
+      if (dto.propostaExterna) {
+        await this.prisma.propostaExterna
+          .updateMany({
+            where: { codigo: dto.propostaExterna, contratoId: contrato.id },
+            data: { status: 'UTILIZADA', contratoId: null },
+          })
+          .catch(() => undefined);
+      }
+      await this.prisma.contrato
+        .delete({ where: { id: contrato.id } })
+        .catch((e) => this.logger.error(`Falha ao desfazer contrato ${contrato.id}: ${e}`));
+      throw erro;
+    }
+    return this.findOne(contrato.id, usuario);
+  }
+
+  /** Contrato pendente (sem pagamento confirmado/certificado) → nova tentativa. */
+  private async retomarContrato(
+    contratoId: string,
+    dto: CreateContratoDto,
+    usuario: UsuarioAutenticado,
+  ) {
+    const contrato = await this.prisma.contrato.findUniqueOrThrow({
+      where: { id: contratoId },
+      include: {
+        certificado: true,
+        pagamentos: { where: { status: 'CONFIRMADO' } },
+      },
+    });
+    if (contrato.certificado) {
+      throw new ConflictException('Esta vistoria já tem um contrato pago e emitido.');
+    }
+    if (contrato.pagamentos.length > 0) {
+      throw new ConflictException(
+        'Este contrato já tem pagamento confirmado — o certificado será emitido em instantes.',
+      );
+    }
+
+    const plano = await this.prisma.plano.findUnique({ where: { id: dto.planoId } });
+    if (!plano?.ativo) throw new NotFoundException('Plano não encontrado ou inativo.');
+
+    await this.cancelarCobrancaAnterior(contrato.id, contrato.checkout);
+
+    const { valorCobranca, premioTotal, parcelas } = this.precificar(
+      plano,
+      dto.formaPagamento,
+      dto.parcelas,
+    );
+    await this.prisma.contrato.update({
+      where: { id: contrato.id },
+      data: { planoId: plano.id, formaPagamento: dto.formaPagamento, parcelas, premioTotal },
+    });
     await this.gerarCobranca(contrato.id, dto.formaPagamento, parcelas, valorCobranca);
+    this.logger.log(`Contrato ${contrato.id} retomado (nova cobrança após falha anterior).`);
     return this.findOne(contrato.id, usuario);
   }
 

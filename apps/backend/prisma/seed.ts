@@ -75,6 +75,26 @@ async function main() {
       valorAparelhoMin: 0,
       valorAparelhoMax: 6000,
     },
+    // Faixa alta (aparelhos top de linha, ex.: R$ 6.800): preços iniciais
+    // proporcionais aos demais — ADMIN revisa a precificação em /planos.
+    {
+      nome: 'Premium',
+      descricao: 'Roubo e furto qualificado para aparelhos de alto valor.',
+      periodicidade: 'MENSAL' as const,
+      premioMensal: 49.9,
+      capitalSegurado: 12000,
+      valorAparelhoMin: 6000,
+      valorAparelhoMax: 12000,
+    },
+    {
+      nome: 'Premium Anual',
+      descricao: 'Plano Premium pago à vista (12 meses).',
+      periodicidade: 'ANUAL' as const,
+      premioAnual: 499,
+      capitalSegurado: 12000,
+      valorAparelhoMin: 6000,
+      valorAparelhoMax: 12000,
+    },
   ];
   for (const p of planos) {
     const existente = await prisma.plano.findFirst({ where: { nome: p.nome } });

@@ -329,7 +329,13 @@ model Vistoria {
   loja              Loja           @relation(fields: [lojaId], references: [id])
   codigoDinamico    String
   codigoExpiraEm    DateTime
-  fotos             Json?          // [{ tipo, url, hashSha256 }]
+  // Vistoria remota (M2): o CLIENTE conclui pelo link enviado ao WhatsApp dele.
+  tokenPublico      String?        @unique
+  tokenExpiraEm     DateTime?
+  linkEnviadoEm     DateTime?
+  imeiInformado     String?
+  concluidaEm       DateTime?
+  fotos             Json?          // [{ tipo, url, hashSha256, base64? (fallback sem R2) }]
   geolocalizacao    Json?          // { lat, lng, precisao }
   deviceFingerprint String?
   status            VistoriaStatus @default(PENDENTE)
