@@ -155,7 +155,7 @@ export class InadimplenciaService {
     await this.prisma.$transaction([
       this.prisma.certificado.update({
         where: { id: certificado.id },
-        data: { status: 'CANCELADO' },
+        data: { status: 'CANCELADO', canceladoEm: new Date(), motivoCancelamento: motivo },
       }),
       ...(certificado.contrato
         ? [

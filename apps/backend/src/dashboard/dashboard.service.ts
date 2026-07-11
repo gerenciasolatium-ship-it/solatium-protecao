@@ -8,6 +8,7 @@ import {
   arredondar2,
   faixaSinistralidade,
   montarSerieMensal,
+  pct,
   pctInadimplencia,
   sinistralidadePct,
   ticketMedio,
@@ -67,6 +68,8 @@ export class DashboardService {
       serieMensal,
       rankingLojas,
       totalLojas,
+      carteira,
+      cancelamentos,
     ] = await Promise.all([
       this.prisma.certificado.count({ where: { status: 'ATIVO' } }),
       this.prisma.certificado.count({ where: { status: 'SUSPENSO' } }),
@@ -91,6 +94,8 @@ export class DashboardService {
       this.serieMensal(),
       this.ranking(inicio12m, inicioMes, top),
       this.prisma.loja.count(),
+      this.carteiraRecebimento(inicio12m),
+      this.resumoCancelamentos(inicio12m),
     ]);
 
     const premio12m = Number(confirmado12m._sum.valor ?? 0);
@@ -109,6 +114,12 @@ export class DashboardService {
         ticketMedio: ticketMedio(premioMesRow, vendasMes),
       },
       mrr: mrrRow,
+      carteira: {
+        ...carteira,
+        premioRecebido12m: arredondar2(premio12m),
+        pctRecebido: pct(premio12m, carteira.premioEmitido12m),
+      },
+      cancelamentos,
       inadimplencia: {
         parcelasVencidas: inadimplencia._count._all,
         valorVencido: arredondar2(valorVencido),
@@ -157,6 +168,8 @@ export class DashboardService {
       vouchersPendentes,
       sinistrosAndamento,
       serieMensal,
+      carteira,
+      cancelamentos,
     ] = await Promise.all([
       this.prisma.certificado.count({ where: { lojaId, status: 'ATIVO' } }),
       this.prisma.certificado.count({ where: { lojaId, createdAt: { gte: inicioMes } } }),
@@ -188,11 +201,13 @@ export class DashboardService {
         where: { lojaId, status: { in: ['ABERTO', 'DOCUMENTACAO_PENDENTE', 'EM_ANALISE'] } },
       }),
       this.serieMensal(lojaId),
+      this.carteiraRecebimento(inicio12m, lojaId),
+      this.resumoCancelamentos(inicio12m, lojaId),
     ]);
 
     const premio12m = Number(confirmado12m._sum.valor ?? 0);
     const indenizado = Number(indenizado12m._sum.valorIndenizacao ?? 0);
-    const pct = sinistralidadePct(premio12m, indenizado);
+    const pctSinistros = sinistralidadePct(premio12m, indenizado);
 
     return {
       geradoEm: agora,
@@ -207,13 +222,19 @@ export class DashboardService {
         saldoContaCorrente: arredondar2(saldo),
         creditadasTotal: arredondar2(Number(comissoes12m._sum.valorTotal ?? 0)),
       },
+      carteira: {
+        ...carteira,
+        premioRecebido12m: arredondar2(premio12m),
+        pctRecebido: pct(premio12m, carteira.premioEmitido12m),
+      },
+      cancelamentos,
       inadimplencia: {
         parcelasVencidas: vencidos._count._all,
         valorVencido: arredondar2(Number(vencidos._sum.valor ?? 0)),
       },
       sinistralidade: {
-        pct12m: pct,
-        faixa: faixaSinistralidade(pct),
+        pct12m: pctSinistros,
+        faixa: faixaSinistralidade(pctSinistros),
         meta: META_SINISTRALIDADE_PCT,
         premio12m: arredondar2(premio12m),
         indenizado12m: arredondar2(indenizado),
@@ -260,19 +281,28 @@ export class DashboardService {
     return arredondar2(Number(rows[0]?.total ?? 0));
   }
 
-  /** Série de 12 meses: vendas, prêmio arrecadado e indenizações (M13 item 3). */
+  /** Série de 12 meses: vendas, emitido, recebido, indenizações e cancelamentos. */
   private async serieMensal(lojaId?: string): Promise<PontoSerieMensal[]> {
     const meses = ultimosMeses(MESES_SERIE);
     const inicio = this.inicioJanela12m(new Date());
     const filtroCert = lojaId ? Prisma.sql`AND "lojaId" = ${lojaId}` : Prisma.empty;
+    const filtroCertC = lojaId ? Prisma.sql`AND c."lojaId" = ${lojaId}` : Prisma.empty;
     const filtroContrato = lojaId ? Prisma.sql`AND ct."lojaId" = ${lojaId}` : Prisma.empty;
 
-    const [vendas, premios, indenizados] = await Promise.all([
+    const [vendas, emitidos, premios, indenizados, cancelados] = await Promise.all([
       this.prisma.$queryRaw<LinhaMes[]>`
         SELECT to_char(date_trunc('month', "createdAt"), 'YYYY-MM') AS mes,
                COUNT(*)::float8 AS total
         FROM "certificados"
         WHERE "createdAt" >= ${inicio} ${filtroCert}
+        GROUP BY 1
+      `,
+      this.prisma.$queryRaw<LinhaMes[]>`
+        SELECT to_char(date_trunc('month', c."createdAt"), 'YYYY-MM') AS mes,
+               COALESCE(SUM(ct."premioTotal"), 0)::float8 AS total
+        FROM "certificados" c
+        JOIN "contratos" ct ON ct."id" = c."contratoId"
+        WHERE c."createdAt" >= ${inicio} ${filtroCertC}
         GROUP BY 1
       `,
       this.prisma.$queryRaw<LinhaMes[]>`
@@ -290,10 +320,83 @@ export class DashboardService {
         WHERE "status" = 'APROVADO' AND "decididoEm" >= ${inicio} ${filtroCert}
         GROUP BY 1
       `,
+      this.prisma.$queryRaw<LinhaMes[]>`
+        SELECT to_char(date_trunc('month', "canceladoEm"), 'YYYY-MM') AS mes,
+               COUNT(*)::float8 AS total
+        FROM "certificados"
+        WHERE "status" = 'CANCELADO' AND "canceladoEm" >= ${inicio} ${filtroCert}
+        GROUP BY 1
+      `,
     ]);
 
     const paraMapa = (linhas: LinhaMes[]) => new Map(linhas.map((l) => [l.mes, Number(l.total)]));
-    return montarSerieMensal(meses, paraMapa(vendas), paraMapa(premios), paraMapa(indenizados));
+    return montarSerieMensal(meses, {
+      vendas: paraMapa(vendas),
+      emitido: paraMapa(emitidos),
+      premio: paraMapa(premios),
+      indenizado: paraMapa(indenizados),
+      cancelados: paraMapa(cancelados),
+    });
+  }
+
+  /**
+   * Carteira × recebimento (venda parcelada): prêmio EMITIDO na janela vs o que
+   * ainda falta ENTRAR dos contratos vigentes (emitido − recebido por contrato,
+   * nunca negativo — anual à vista zera).
+   */
+  private async carteiraRecebimento(inicio12m: Date, lojaId?: string) {
+    const filtroCert = lojaId ? Prisma.sql`AND c."lojaId" = ${lojaId}` : Prisma.empty;
+    const [premioEmitido12m, aReceberRows] = await Promise.all([
+      this.premioVendidoDesde(inicio12m, lojaId),
+      this.prisma.$queryRaw<{ total: number }[]>`
+        SELECT COALESCE(SUM(GREATEST(ct."premioTotal" - COALESCE(p.pago, 0), 0)), 0)::float8 AS total
+        FROM "certificados" c
+        JOIN "contratos" ct ON ct."id" = c."contratoId"
+        LEFT JOIN (
+          SELECT "contratoId", SUM("valor") AS pago
+          FROM "pagamentos" WHERE "status" = 'CONFIRMADO' GROUP BY 1
+        ) p ON p."contratoId" = ct."id"
+        WHERE c."status" IN ('ATIVO', 'SUSPENSO') ${filtroCert}
+      `,
+    ]);
+    return {
+      premioEmitido12m,
+      aReceberVigente: arredondar2(Number(aReceberRows[0]?.total ?? 0)),
+    };
+  }
+
+  /** Cancelamentos na janela: quantidade, % sobre emissões e prêmio perdido. */
+  private async resumoCancelamentos(inicio12m: Date, lojaId?: string) {
+    const filtroCert = lojaId ? Prisma.sql`AND c."lojaId" = ${lojaId}` : Prisma.empty;
+    const [emissoes12m, cancelados12m, perdidoRows] = await Promise.all([
+      this.prisma.certificado.count({
+        where: { createdAt: { gte: inicio12m }, ...(lojaId ? { lojaId } : {}) },
+      }),
+      this.prisma.certificado.count({
+        where: {
+          status: 'CANCELADO',
+          canceladoEm: { gte: inicio12m },
+          ...(lojaId ? { lojaId } : {}),
+        },
+      }),
+      // Prêmio perdido = o que os contratos cancelados deixaram de pagar.
+      this.prisma.$queryRaw<{ total: number }[]>`
+        SELECT COALESCE(SUM(GREATEST(ct."premioTotal" - COALESCE(p.pago, 0), 0)), 0)::float8 AS total
+        FROM "certificados" c
+        JOIN "contratos" ct ON ct."id" = c."contratoId"
+        LEFT JOIN (
+          SELECT "contratoId", SUM("valor") AS pago
+          FROM "pagamentos" WHERE "status" = 'CONFIRMADO' GROUP BY 1
+        ) p ON p."contratoId" = ct."id"
+        WHERE c."status" = 'CANCELADO' AND c."canceladoEm" >= ${inicio12m} ${filtroCert}
+      `,
+    ]);
+    return {
+      qtd12m: cancelados12m,
+      emissoes12m,
+      pct: pct(cancelados12m, emissoes12m),
+      premioPerdido12m: arredondar2(Number(perdidoRows[0]?.total ?? 0)),
+    };
   }
 
   /** Ranking de lojas por prêmio arrecadado (12m) com sinistralidade (M13 item 4). */

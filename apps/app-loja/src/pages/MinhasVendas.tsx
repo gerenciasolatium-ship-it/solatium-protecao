@@ -7,6 +7,13 @@ interface ResumoLoja {
   vidasAtivas: number;
   vendasMes: { quantidade: number; premio: number; ticketMedio: number };
   comissoes: { saldoContaCorrente: number; creditadasTotal: number };
+  carteira: {
+    premioEmitido12m: number;
+    premioRecebido12m: number;
+    pctRecebido: number;
+    aReceberVigente: number;
+  };
+  cancelamentos: { qtd12m: number; emissoes12m: number; pct: number; premioPerdido12m: number };
   inadimplencia: { parcelasVencidas: number; valorVencido: number };
   sinistralidade: {
     pct12m: number;
@@ -106,6 +113,44 @@ export function MinhasVendas() {
                 valor={String(resumo.vouchersPendentes.quantidade)}
                 detalhe={moeda(resumo.vouchersPendentes.valor)}
               />
+            </div>
+
+            {/* Recebimento da carteira (venda parcelada) + cancelamentos */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                Recebimento (12 meses)
+              </div>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-sm text-slate-600">
+                  Recebido {moeda(resumo.carteira.premioRecebido12m)} de{' '}
+                  {moeda(resumo.carteira.premioEmitido12m)} emitidos
+                </span>
+                <span
+                  className="text-xl font-bold text-slate-900"
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {resumo.carteira.pctRecebido.toLocaleString('pt-BR')}%
+                </span>
+              </div>
+              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-blue-100">
+                <div
+                  className="h-2.5 rounded-full bg-sol-azul"
+                  style={{ width: `${Math.min(100, resumo.carteira.pctRecebido)}%` }}
+                />
+              </div>
+              <div className="mt-2 flex justify-between text-xs text-slate-500">
+                <span>A receber: {moeda(resumo.carteira.aReceberVigente)}</span>
+                <span>
+                  Cancelamentos: {resumo.cancelamentos.qtd12m} (
+                  {resumo.cancelamentos.pct.toLocaleString('pt-BR')}%)
+                </span>
+              </div>
+              {resumo.cancelamentos.premioPerdido12m > 0 && (
+                <p className="mt-1 text-xs text-slate-400">
+                  {moeda(resumo.cancelamentos.premioPerdido12m)} de prêmio perdido em cancelamentos
+                  — cliente que paga em dia mantém sua comissão sem clawback.
+                </p>
+              )}
             </div>
 
             {/* Sinistralidade da loja (M13 — transparência) */}

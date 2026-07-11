@@ -3,11 +3,13 @@ import { formatarMoeda } from '../lib/ui';
 
 /**
  * Gráficos SVG do dashboard executivo (M9/M13). Sem dependências.
- * Paleta validada (validate_palette.js, superfície branca, CVD ΔE 74,6):
- * prêmio = azul, indenizações = vermelho. Cores de status são reservadas
- * (faixa de sinistralidade) e sempre acompanham rótulo textual.
+ * Paleta validada (validate_palette.js, superfície branca, ΔE CVD ≥22,6):
+ * emitido/recebido = dois tons do MESMO azul (mesma medida, antes→depois),
+ * indenizações = vermelho. Cores de status são reservadas (faixa de
+ * sinistralidade) e sempre acompanham rótulo textual.
  */
-export const COR_SERIE_1 = '#2a78d6'; // prêmio arrecadado
+export const COR_EMITIDO = '#5598e7'; // prêmio emitido (venda, valor cheio)
+export const COR_RECEBIDO = '#1c5cab'; // prêmio recebido (caixa de fato)
 export const COR_SERIE_2 = '#e34948'; // indenizações pagas
 const COR_GRADE = '#e1e0d9';
 const COR_EIXO = '#898781';
@@ -22,8 +24,10 @@ export const CORES_FAIXA: Record<string, { cor: string; rotulo: string }> = {
 export interface PontoMensal {
   mes: string;
   vendas: number;
+  emitido: number;
   premio: number;
   indenizado: number;
+  cancelados: number;
   sinistralidadePct: number;
 }
 
@@ -61,7 +65,7 @@ interface TooltipState {
   x: number;
 }
 
-/** Barras agrupadas: prêmio arrecadado × indenizações pagas (mesma unidade, R$). */
+/** Barras agrupadas: prêmio emitido × recebido × indenizações (mesma unidade, R$). */
 export function GraficoPremioIndenizado({ dados }: { dados: PontoMensal[] }) {
   const [hover, setHover] = useState<TooltipState | null>(null);
   const largura = 720;
@@ -69,9 +73,9 @@ export function GraficoPremioIndenizado({ dados }: { dados: PontoMensal[] }) {
   const margem = { topo: 12, direita: 8, baixo: 24, esquerda: 46 };
   const areaL = largura - margem.esquerda - margem.direita;
   const areaA = altura - margem.topo - margem.baixo;
-  const maximo = Math.max(1, ...dados.map((d) => Math.max(d.premio, d.indenizado)));
+  const maximo = Math.max(1, ...dados.map((d) => Math.max(d.emitido, d.premio, d.indenizado)));
   const passo = areaL / Math.max(1, dados.length);
-  const larguraBarra = Math.min(14, (passo - 8) / 2);
+  const larguraBarra = Math.min(11, (passo - 10) / 3);
 
   const ticks = [0, 0.5, 1].map((f) => ({
     y: margem.topo + areaA * (1 - f),
@@ -113,9 +117,13 @@ export function GraficoPremioIndenizado({ dados }: { dados: PontoMensal[] }) {
         ))}
         {dados.map((d, i) => {
           const x0 = margem.esquerda + passo * i + passo / 2;
-          const hPremio = (d.premio / maximo) * areaA;
-          const hInden = (d.indenizado / maximo) * areaA;
           const base = margem.topo + areaA;
+          const opacidade = hover == null || hover.indice === i ? 1 : 0.45;
+          const barras = [
+            { valor: d.emitido, cor: COR_EMITIDO },
+            { valor: d.premio, cor: COR_RECEBIDO },
+            { valor: d.indenizado, cor: COR_SERIE_2 },
+          ];
           return (
             <g key={d.mes}>
               {/* Área de hover maior que as marcas (hit target) */}
@@ -127,26 +135,23 @@ export function GraficoPremioIndenizado({ dados }: { dados: PontoMensal[] }) {
                 fill="transparent"
                 onMouseEnter={() => setHover({ indice: i, x: x0 })}
               />
-              <rect
-                x={x0 - larguraBarra - 1}
-                y={base - hPremio}
-                width={larguraBarra}
-                height={Math.max(hPremio, d.premio > 0 ? 2 : 0)}
-                rx={hPremio > 4 ? 3 : 0}
-                fill={COR_SERIE_1}
-                opacity={hover == null || hover.indice === i ? 1 : 0.45}
-                pointerEvents="none"
-              />
-              <rect
-                x={x0 + 1}
-                y={base - hInden}
-                width={larguraBarra}
-                height={Math.max(hInden, d.indenizado > 0 ? 2 : 0)}
-                rx={hInden > 4 ? 3 : 0}
-                fill={COR_SERIE_2}
-                opacity={hover == null || hover.indice === i ? 1 : 0.45}
-                pointerEvents="none"
-              />
+              {barras.map((b, j) => {
+                const h = (b.valor / maximo) * areaA;
+                const x = x0 + (j - 1.5) * (larguraBarra + 2) + 1;
+                return (
+                  <rect
+                    key={b.cor}
+                    x={x}
+                    y={base - h}
+                    width={larguraBarra}
+                    height={Math.max(h, b.valor > 0 ? 2 : 0)}
+                    rx={h > 4 ? 3 : 0}
+                    fill={b.cor}
+                    opacity={opacidade}
+                    pointerEvents="none"
+                  />
+                );
+              })}
               <text x={x0} y={altura - 8} textAnchor="middle" fontSize={10} fill={COR_EIXO}>
                 {rotuloMes(d.mes)}
               </text>
@@ -173,9 +178,16 @@ export function GraficoPremioIndenizado({ dados }: { dados: PontoMensal[] }) {
             <div>
               <span
                 className="mr-1 inline-block h-2 w-2 rounded-sm"
-                style={{ background: COR_SERIE_1 }}
+                style={{ background: COR_EMITIDO }}
               />
-              Prêmio: <strong>{formatarMoeda(ponto.premio)}</strong>
+              Emitido: <strong>{formatarMoeda(ponto.emitido)}</strong>
+            </div>
+            <div>
+              <span
+                className="mr-1 inline-block h-2 w-2 rounded-sm"
+                style={{ background: COR_RECEBIDO }}
+              />
+              Recebido: <strong>{formatarMoeda(ponto.premio)}</strong>
             </div>
             <div>
               <span
@@ -184,7 +196,10 @@ export function GraficoPremioIndenizado({ dados }: { dados: PontoMensal[] }) {
               />
               Indenizações: <strong>{formatarMoeda(ponto.indenizado)}</strong>
             </div>
-            <div className="text-slate-500">{ponto.vendas} venda(s) no mês</div>
+            <div className="text-slate-500">
+              {ponto.vendas} venda(s)
+              {ponto.cancelados > 0 ? ` · ${ponto.cancelados} cancelamento(s)` : ''}
+            </div>
           </div>
         </div>
       )}
@@ -193,9 +208,16 @@ export function GraficoPremioIndenizado({ dados }: { dados: PontoMensal[] }) {
         <span className="inline-flex items-center gap-1.5">
           <span
             className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ background: COR_SERIE_1 }}
+            style={{ background: COR_EMITIDO }}
           />
-          Prêmio arrecadado
+          Prêmio emitido
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-sm"
+            style={{ background: COR_RECEBIDO }}
+          />
+          Prêmio recebido
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span

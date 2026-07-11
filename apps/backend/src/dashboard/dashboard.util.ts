@@ -33,6 +33,12 @@ export function pctInadimplencia(valorVencido: number, valorConfirmado: number):
   return arredondar2((valorVencido / base) * 100);
 }
 
+/** Percentual simples parte/total em % (0 quando não há base). */
+export function pct(parte: number, total: number): number {
+  if (total <= 0) return 0;
+  return arredondar2((parte / total) * 100);
+}
+
 /** Rótulos YYYY-MM dos últimos `n` meses, do mais antigo ao atual. */
 export function ultimosMeses(n: number, referencia: Date = new Date()): string[] {
   const meses: string[] = [];
@@ -48,29 +54,42 @@ export function ultimosMeses(n: number, referencia: Date = new Date()): string[]
 export interface PontoSerieMensal {
   mes: string; // YYYY-MM
   vendas: number;
+  /** Prêmio EMITIDO no mês (contratos vendidos — valor cheio, mesmo parcelado). */
+  emitido: number;
+  /** Prêmio RECEBIDO no mês (pagamentos confirmados — o que entrou de fato). */
   premio: number;
   indenizado: number;
+  cancelados: number;
   sinistralidadePct: number;
 }
 
+export interface AgregadosMensais {
+  vendas: Map<string, number>;
+  emitido: Map<string, number>;
+  premio: Map<string, number>;
+  indenizado: Map<string, number>;
+  cancelados: Map<string, number>;
+}
+
 /**
- * Junta os agregados mensais (vendas, prêmio arrecadado, indenizações) numa
- * série contínua — meses sem movimento entram zerados (gráfico sem buracos).
+ * Junta os agregados mensais (vendas, prêmio emitido, prêmio recebido,
+ * indenizações, cancelamentos) numa série contínua — meses sem movimento
+ * entram zerados (gráfico sem buracos).
  */
 export function montarSerieMensal(
   meses: string[],
-  vendasPorMes: Map<string, number>,
-  premioPorMes: Map<string, number>,
-  indenizadoPorMes: Map<string, number>,
+  agregados: AgregadosMensais,
 ): PontoSerieMensal[] {
   return meses.map((mes) => {
-    const premio = arredondar2(premioPorMes.get(mes) ?? 0);
-    const indenizado = arredondar2(indenizadoPorMes.get(mes) ?? 0);
+    const premio = arredondar2(agregados.premio.get(mes) ?? 0);
+    const indenizado = arredondar2(agregados.indenizado.get(mes) ?? 0);
     return {
       mes,
-      vendas: vendasPorMes.get(mes) ?? 0,
+      vendas: agregados.vendas.get(mes) ?? 0,
+      emitido: arredondar2(agregados.emitido.get(mes) ?? 0),
       premio,
       indenizado,
+      cancelados: agregados.cancelados.get(mes) ?? 0,
       sinistralidadePct: sinistralidadePct(premio, indenizado),
     };
   });

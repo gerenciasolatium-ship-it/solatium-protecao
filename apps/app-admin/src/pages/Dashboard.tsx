@@ -18,6 +18,18 @@ interface ResumoAdmin {
   totalLojas: number;
   vendasMes: { quantidade: number; premio: number; ticketMedio: number };
   mrr: number;
+  carteira: {
+    premioEmitido12m: number;
+    premioRecebido12m: number;
+    pctRecebido: number;
+    aReceberVigente: number;
+  };
+  cancelamentos: {
+    qtd12m: number;
+    emissoes12m: number;
+    pct: number;
+    premioPerdido12m: number;
+  };
   inadimplencia: {
     parcelasVencidas: number;
     valorVencido: number;
@@ -161,6 +173,85 @@ export default function Dashboard() {
             />
           </div>
 
+          {/* Carteira × recebimento (venda parcelada) + cancelamentos */}
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-700">
+                Carteira &amp; recebimento (12 meses)
+              </h2>
+              <span className="text-xs text-slate-400">venda parcelada: emitido ≠ recebido</span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <div>
+                <div className="text-xs font-medium text-slate-500">Prêmio emitido</div>
+                <div
+                  className="mt-1 text-2xl font-bold text-slate-900"
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {formatarMoeda(resumo.carteira.premioEmitido12m)}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-400">
+                  {resumo.cancelamentos.emissoes12m} certificado(s) emitido(s)
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-slate-500">Recebido de fato</div>
+                <div
+                  className="mt-1 text-2xl font-bold"
+                  style={{ fontVariantNumeric: 'tabular-nums', color: '#1c5cab' }}
+                >
+                  {formatarMoeda(resumo.carteira.premioRecebido12m)}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-400">
+                  {resumo.carteira.pctRecebido.toLocaleString('pt-BR')}% do emitido
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-slate-500">A receber (vigentes)</div>
+                <div
+                  className="mt-1 text-2xl font-bold text-slate-900"
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {formatarMoeda(resumo.carteira.aReceberVigente)}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-400">
+                  parcelas futuras de contratos ativos/suspensos
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-slate-500">Cancelamentos</div>
+                <div
+                  className={`mt-1 text-2xl font-bold ${resumo.cancelamentos.pct > 10 ? 'text-red-600' : 'text-slate-900'}`}
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {resumo.cancelamentos.pct.toLocaleString('pt-BR')}%
+                </div>
+                <div className="mt-0.5 text-xs text-slate-400">
+                  {resumo.cancelamentos.qtd12m} de {resumo.cancelamentos.emissoes12m} —{' '}
+                  {formatarMoeda(resumo.cancelamentos.premioPerdido12m)} de prêmio perdido
+                </div>
+              </div>
+            </div>
+
+            {/* Barra recebido ÷ emitido (mesma medida, dois tons do mesmo azul) */}
+            <div className="mt-4">
+              <div className="h-3 overflow-hidden rounded-full" style={{ background: '#dbeafe' }}>
+                <div
+                  className="h-3 rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, resumo.carteira.pctRecebido)}%`,
+                    background: '#1c5cab',
+                  }}
+                />
+              </div>
+              <div className="mt-1 flex justify-between text-[11px] text-slate-400">
+                <span>recebido {resumo.carteira.pctRecebido.toLocaleString('pt-BR')}%</span>
+                <span>emitido 100%</span>
+              </div>
+            </div>
+          </div>
+
           {/* Sinistralidade (M13) + operação */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
@@ -216,7 +307,7 @@ export default function Dashboard() {
           {/* Séries mensais */}
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
-              Prêmio × indenizações por mês (R$)
+              Emitido × recebido × indenizações por mês (R$)
             </h2>
             <GraficoPremioIndenizado dados={resumo.serieMensal} />
           </div>
