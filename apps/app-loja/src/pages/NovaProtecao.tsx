@@ -63,6 +63,10 @@ interface Vistoria {
   status: 'PENDENTE' | 'APROVADA' | 'EM_ANALISE' | 'REPROVADA';
   codigoDinamico: string;
   codigoExpiraEm: string;
+  tokenExpiraEm?: string | null;
+  linkEnviadoEm?: string | null;
+  motivoReprova?: string | null;
+  cliente?: { nome: string; telefoneWhatsapp: string } | null;
 }
 
 interface Plano {
@@ -459,30 +463,66 @@ export function NovaProtecao() {
   }
 
   /* ------------------------- Etapa 2: vistoria --------------------------- */
+  // Antifraude (M2): o vendedor NÃO aprova mais a vistoria — o CLIENTE conclui
+  // pelo link enviado ao WhatsApp dele. O wizard fica em polling até aprovar.
 
-  async function aprovarVistoria() {
+  const [reenviado, setReenviado] = useState(false);
+
+  useEffect(() => {
+    if (etapa !== 'vistoria' || !vistoria || vistoria.status !== 'PENDENTE') return;
+    const t = window.setInterval(() => {
+      apiFetch<Vistoria>(`/vistorias/${vistoria.id}`)
+        .then(setVistoria)
+        .catch(() => undefined); // rede oscilou: mantém tentando
+    }, 4000);
+    return () => window.clearInterval(t);
+  }, [etapa, vistoria]);
+
+  async function carregarPlanos(): Promise<void> {
+    const pagina = await apiFetch<Paginacao<Plano>>('/planos', { query: { porPagina: 100 } });
+    const elegiveis = pagina.itens.filter((p) => {
+      if (!p.ativo) return false;
+      const min = p.valorAparelhoMin != null ? Number(p.valorAparelhoMin) : null;
+      const max = p.valorAparelhoMax != null ? Number(p.valorAparelhoMax) : null;
+      if (min != null && valorNum < min) return false;
+      if (max != null && valorNum > max) return false;
+      return true;
+    });
+    setPlanos(elegiveis);
+    if (elegiveis.length === 1) setPlanoId(elegiveis[0].id);
+  }
+
+  // Vistoria aprovada (pelo cliente ou exceção do backoffice) → planos → avança.
+  useEffect(() => {
+    if (etapa !== 'vistoria' || vistoria?.status !== 'APROVADA') return;
+    let ativo = true;
+    void (async () => {
+      try {
+        await carregarPlanos();
+        if (ativo) setEtapa('plano');
+      } catch (err) {
+        if (ativo) falha(err, 'Erro ao carregar os planos.');
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [etapa, vistoria?.status]);
+
+  async function reenviarLinkVistoria() {
     if (!vistoria || enviando) return;
     setErros([]);
     setEnviando(true);
     try {
-      const aprovada = await apiFetch<Vistoria>(`/vistorias/${vistoria.id}/aprovar`, {
+      const atualizada = await apiFetch<Vistoria>(`/vistorias/${vistoria.id}/reenviar-link`, {
         method: 'POST',
       });
-      setVistoria(aprovada);
-      const pagina = await apiFetch<Paginacao<Plano>>('/planos', { query: { porPagina: 100 } });
-      const elegiveis = pagina.itens.filter((p) => {
-        if (!p.ativo) return false;
-        const min = p.valorAparelhoMin != null ? Number(p.valorAparelhoMin) : null;
-        const max = p.valorAparelhoMax != null ? Number(p.valorAparelhoMax) : null;
-        if (min != null && valorNum < min) return false;
-        if (max != null && valorNum > max) return false;
-        return true;
-      });
-      setPlanos(elegiveis);
-      if (elegiveis.length === 1) setPlanoId(elegiveis[0].id);
-      setEtapa('plano');
+      setVistoria(atualizada);
+      setReenviado(true);
+      window.setTimeout(() => setReenviado(false), 4000);
     } catch (err) {
-      falha(err, 'Erro ao aprovar a vistoria.');
+      falha(err, 'Erro ao reenviar o link.');
     } finally {
       setEnviando(false);
     }
@@ -949,29 +989,64 @@ export function NovaProtecao() {
           </form>
         )}
 
-        {/* ---------------- Etapa 2: vistoria ---------------- */}
+        {/* ---------------- Etapa 2: vistoria remota (cliente) ---------------- */}
         {etapa === 'vistoria' && vistoria && (
           <div className="flex flex-col gap-5">
             <section className="card text-center">
               <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
-                Código de vistoria
+                Vistoria pelo cliente
               </h2>
-              <p className="mb-3 text-xs text-slate-500">
-                Digite este código em uma nota no aparelho do cliente e confira que a tela liga e
-                responde. Válido por 10 minutos.
-              </p>
-              <div className="mx-auto mb-3 w-fit rounded-2xl bg-sol-azul px-8 py-4 font-mono text-4xl font-bold tracking-[0.3em] text-white">
-                {vistoria.codigoDinamico}
-              </div>
-              <p className="text-xs text-slate-500">
+              {vistoria.status === 'PENDENTE' && (
+                <>
+                  <div className="mx-auto my-4 h-10 w-10 animate-spin rounded-full border-4 border-sol-azul border-t-transparent" />
+                  <p className="text-sm font-medium text-slate-800">
+                    Link enviado ao WhatsApp do cliente
+                    {vistoria.cliente?.telefoneWhatsapp
+                      ? ` (…${vistoria.cliente.telefoneWhatsapp.replace(/\D/g, '').slice(-4)})`
+                      : ''}
+                    .
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Peça para o cliente abrir o link <strong>no próprio aparelho</strong>: ele
+                    confirma o IMEI (<span className="font-mono">*#06#</span>) e tira 3 fotos. Esta
+                    tela avança sozinha quando a vistoria for aprovada.
+                  </p>
+                  {vistoria.tokenExpiraEm && new Date(vistoria.tokenExpiraEm) < new Date() && (
+                    <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                      ⏰ O link expirou sem conclusão. Reenvie abaixo — o cliente recebe um link
+                      novo na hora (não precisa recomeçar o cadastro).
+                    </p>
+                  )}
+                </>
+              )}
+              {vistoria.status === 'EM_ANALISE' && (
+                <p className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                  ⚠️ O cliente concluiu, mas o <strong>IMEI digitado não confere</strong> com o
+                  cadastrado. A vistoria foi para análise do backoffice — a venda só continua se a
+                  equipe aprovar. Confira o IMEI com o cliente.
+                </p>
+              )}
+              {vistoria.status === 'REPROVADA' && (
+                <p className="rounded-lg bg-red-50 px-3 py-3 text-sm text-red-700">
+                  ❌ Vistoria reprovada{vistoria.motivoReprova ? `: ${vistoria.motivoReprova}` : ''}
+                  . Inicie uma nova proteção.
+                </p>
+              )}
+              <p className="mt-3 text-xs text-slate-400">
                 Aparelho: {aparelho?.marca} {aparelho?.modelo} — IMEI final{' '}
                 {aparelho?.imei.slice(-4)}
               </p>
             </section>
 
-            <button onClick={aprovarVistoria} disabled={enviando} className="btn-verde">
-              {enviando ? 'Aprovando…' : 'Aparelho conferido — aprovar vistoria'}
-            </button>
+            {(vistoria.status === 'PENDENTE' || vistoria.status === 'EM_ANALISE') && (
+              <button onClick={reenviarLinkVistoria} disabled={enviando} className="btn-secundario">
+                {enviando
+                  ? 'Reenviando…'
+                  : reenviado
+                    ? '✓ Link reenviado!'
+                    : 'Reenviar link ao cliente'}
+              </button>
+            )}
           </div>
         )}
 
@@ -983,9 +1058,25 @@ export function NovaProtecao() {
                 Plano
               </h2>
               {planos.length === 0 && (
-                <p className="text-sm text-red-600">
-                  Nenhum plano ativo cobre um aparelho de {reais(valorNum)}. Fale com o admin.
-                </p>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <p className="font-medium">
+                    Nenhum plano ativo cobre um aparelho de {reais(valorNum)}.
+                  </p>
+                  <p className="mt-1 text-xs">
+                    O que fazer: (1) confira se o valor de referência está correto na etapa Dados;
+                    (2) peça ao administrador para criar/ajustar uma faixa de plano em{' '}
+                    <strong>Painel Admin → Planos</strong> cobrindo este valor (campos “valor do
+                    aparelho mín/máx”); (3) volte aqui e toque em atualizar. A vistoria já aprovada
+                    continua válida.
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-2 text-xs font-semibold text-sol-azul underline"
+                    onClick={() => void carregarPlanos().catch(() => undefined)}
+                  >
+                    ↻ Atualizar planos
+                  </button>
+                </div>
               )}
               <div className="flex flex-col gap-2">
                 {planos.map((p) => (

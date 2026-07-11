@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { json } from 'express';
 import { AppModule } from './app.module';
 import { setupSwagger } from './swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -21,6 +22,9 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
+
+  // Vistoria remota envia 3 fotos em base64 num único POST (~1–5 MB).
+  app.use(json({ limit: '12mb' }));
 
   app.setGlobalPrefix('api', { exclude: ['health', 'validar/:codigo'] });
 

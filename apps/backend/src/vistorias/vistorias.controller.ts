@@ -24,20 +24,31 @@ export class VistoriasController {
 
   @Post()
   @Roles(Role.ADMIN, Role.OPERADOR, Role.LOJA_ADMIN, Role.LOJA_VENDEDOR)
-  @ApiOperation({ summary: 'Inicia vistoria (gera código dinâmico de 6 dígitos, 10 min).' })
+  @ApiOperation({
+    summary: 'Inicia vistoria remota: gera link único (30 min) e envia ao WhatsApp do cliente.',
+  })
   create(@Body() dto: CreateVistoriaDto, @CurrentUser() usuario: UsuarioAutenticado) {
     return this.vistorias.create(dto, usuario);
   }
 
-  @Post(':id/aprovar')
+  @Post(':id/reenviar-link')
   @Roles(Role.ADMIN, Role.OPERADOR, Role.LOJA_ADMIN, Role.LOJA_VENDEDOR)
-  @ApiOperation({ summary: 'Aprova a vistoria (libera o checkout).' })
+  @ApiOperation({ summary: 'Gera novo token (30 min) e reenvia o link ao cliente.' })
+  reenviarLink(@Param('id') id: string, @CurrentUser() usuario: UsuarioAutenticado) {
+    return this.vistorias.reenviarLink(id, usuario);
+  }
+
+  // Aprovação manual é EXCEÇÃO do backoffice — o vendedor da loja NÃO pode
+  // liberar o checkout sem o cliente concluir a vistoria (antifraude M2).
+  @Post(':id/aprovar')
+  @Roles(Role.ADMIN, Role.OPERADOR)
+  @ApiOperation({ summary: 'Aprovação manual (exceção — só backoffice; fica auditada).' })
   aprovar(@Param('id') id: string, @CurrentUser() usuario: UsuarioAutenticado) {
     return this.vistorias.aprovar(id, usuario);
   }
 
   @Post(':id/reprovar')
-  @Roles(Role.ADMIN, Role.OPERADOR, Role.LOJA_ADMIN, Role.LOJA_VENDEDOR)
+  @Roles(Role.ADMIN, Role.OPERADOR)
   reprovar(
     @Param('id') id: string,
     @Body() dto: ReprovarVistoriaDto,

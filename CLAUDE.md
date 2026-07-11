@@ -411,5 +411,34 @@ ESTIPULANTE_RAZAO, ESTIPULANTE_CNPJ, SOLATIUM_CNPJ, CONDICOES_GERAIS_URL, SEGURA
       Gate verde: lint + typecheck + **78 testes** + build 4/4.
       Pendências anotadas no relatório: rate limit (`@nestjs/throttler`), régua
       M5 completa (D-3/D0/D+3/D+7), liquidação M12, alerta automático M13, borderô.
-- [ ] Sprint atual: **S2** (vistoria antifraude M2 completa + upload R2 + OCR/geo)
+- [x] **Sprint S5 — vistoria remota antifraude (M2) + correções do fluxo de venda
+      (11/07/2026, branch `feat/s5-vistoria-remota`)**:
+      **Vistoria remota**: o vendedor NÃO aprova mais a vistoria — ao fim da etapa
+      Dados o sistema gera link único (token 48 hex, validade 30 min) e envia ao
+      WhatsApp do CLIENTE (Digisac); o cliente abre no próprio aparelho a página
+      pública `/vistoria/{token}` (app-loja), digita o IMEI (*#06#), tira 3 fotos
+      (frente/verso/tela do IMEI, comprimidas no navegador) e o sistema captura
+      geolocalização (se permitida) + metadados do dispositivo. Backend compara o
+      IMEI com o cadastrado: confere → APROVADA automática; divergente →
+      EM_ANALISE (só backoffice resolve). Evidências guardadas com hash SHA-256
+      (R2 quando configurado; sem R2 as fotos ficam em base64 no jsonb — não se
+      perde a prova). Wizard fica em polling (4s) + botão "Reenviar link" (novo
+      token, sem recomeçar); aprovação manual virou exceção ADMIN/OPERADOR.
+      Rotas públicas `GET/POST /api/vistoria-remota/:token[/concluir]`; body
+      limit 12 MB no main.ts; migration 0008 (tokenPublico/tokenExpiraEm/
+      linkEnviadoEm/imeiInformado/concluidaEm).
+      **Planos faixa alta**: Premium (mensal R$49,90) e Premium Anual (R$499),
+      faixa 6.000–12.000, criados no seed E em produção via API (⚠️ preços
+      iniciais proporcionais — precificar de verdade em /planos); mensagem do
+      wizard sem plano agora orienta o operador (conferir valor → admin criar
+      faixa → atualizar planos sem perder a vistoria).
+      **Checkout**: cobrança falhou → contrato é DESFEITO (vistoria não trava
+      mais em "já tem um contrato"); vistoria com contrato pendente (sem
+      pagamento confirmado) RETOMA a venda cancelando a cobrança antiga e
+      gerando outra (pode trocar plano/forma). Conta Asaas sandbox verificada
+      (SOLATIUM ADM., CNPJ 26338058000133) com chave Pix EVP ATIVA — cobrança
+      PIX + QR testados via API.
+      Gate verde: lint + typecheck + **87 testes** + build 4/4.
+- [ ] Pendente do M2: OCR do IMEI na foto, raio de geolocalização vs loja,
+      device fingerprint × aparelho declarado (hoje registra, não compara).
 - Última atualização: 11/07/2026
