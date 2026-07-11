@@ -1,6 +1,7 @@
 import {
   faixaSinistralidade,
   montarSerieMensal,
+  pct,
   pctInadimplencia,
   sinistralidadePct,
   ticketMedio,
@@ -35,6 +36,12 @@ describe('ticketMedio / pctInadimplencia', () => {
     expect(pctInadimplencia(200, 800)).toBe(20);
     expect(pctInadimplencia(0, 0)).toBe(0);
   });
+
+  it('pct genérico: recebido/emitido e cancelados/emitidos', () => {
+    expect(pct(897, 3588)).toBe(25); // recebeu 25% do prêmio emitido (parcelado)
+    expect(pct(3, 40)).toBe(7.5); // 3 cancelamentos em 40 emissões
+    expect(pct(10, 0)).toBe(0);
+  });
 });
 
 describe('ultimosMeses / montarSerieMensal', () => {
@@ -49,16 +56,41 @@ describe('ultimosMeses / montarSerieMensal', () => {
   });
 
   it('meses sem movimento entram zerados (sem buracos no gráfico)', () => {
-    const serie = montarSerieMensal(
-      ['2026-05', '2026-06', '2026-07'],
-      new Map([['2026-07', 4]]),
-      new Map([['2026-07', 1196]]),
-      new Map([['2026-06', 500]]),
-    );
+    const serie = montarSerieMensal(['2026-05', '2026-06', '2026-07'], {
+      vendas: new Map([['2026-07', 4]]),
+      emitido: new Map([['2026-07', 4784]]),
+      premio: new Map([['2026-07', 1196]]),
+      indenizado: new Map([['2026-06', 500]]),
+      cancelados: new Map([['2026-06', 1]]),
+    });
     expect(serie).toEqual([
-      { mes: '2026-05', vendas: 0, premio: 0, indenizado: 0, sinistralidadePct: 0 },
-      { mes: '2026-06', vendas: 0, premio: 0, indenizado: 500, sinistralidadePct: 0 },
-      { mes: '2026-07', vendas: 4, premio: 1196, indenizado: 0, sinistralidadePct: 0 },
+      {
+        mes: '2026-05',
+        vendas: 0,
+        emitido: 0,
+        premio: 0,
+        indenizado: 0,
+        cancelados: 0,
+        sinistralidadePct: 0,
+      },
+      {
+        mes: '2026-06',
+        vendas: 0,
+        emitido: 0,
+        premio: 0,
+        indenizado: 500,
+        cancelados: 1,
+        sinistralidadePct: 0,
+      },
+      {
+        mes: '2026-07',
+        vendas: 4,
+        emitido: 4784,
+        premio: 1196,
+        indenizado: 0,
+        cancelados: 0,
+        sinistralidadePct: 0,
+      },
     ]);
   });
 });

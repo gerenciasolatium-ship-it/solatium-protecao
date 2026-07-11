@@ -412,6 +412,9 @@ model Certificado {
   vigenciaFim    DateTime
   carenciaAte    DateTime?
   status         CertificadoStatus @default(ATIVO)
+  // Rastreio de churn (dashboards): quando e por que a cobertura foi cancelada.
+  canceladoEm    DateTime?
+  motivoCancelamento String?
   pdfUrl         String?
   whatsappEnviadoEm DateTime?
   emailEnviadoEm    DateTime?
