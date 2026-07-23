@@ -12,7 +12,7 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { FOTO_BASE64_MAX, TIPOS_FOTO_OBRIGATORIOS } from '../vistoria-remota.util';
+import { DISPOSITIVO_MAX, FOTO_BASE64_MAX, TIPOS_FOTO_OBRIGATORIOS } from '../vistoria-remota.util';
 
 export class FotoVistoriaDto {
   @ApiProperty({ enum: TIPOS_FOTO_OBRIGATORIOS })
@@ -60,9 +60,11 @@ export class ConcluirVistoriaRemotaDto {
   @Type(() => GeolocalizacaoDto)
   geolocalizacao?: GeolocalizacaoDto;
 
-  @ApiPropertyOptional({ description: 'Metadados do navegador/dispositivo (userAgent etc).' })
+  @ApiPropertyOptional({
+    description: 'Metadados do navegador/dispositivo (JSON: ua, modelo, gpu, tela, toque).',
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
+  @MaxLength(DISPOSITIVO_MAX)
   dispositivo?: string;
 }

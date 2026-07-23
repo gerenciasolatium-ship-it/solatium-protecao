@@ -38,6 +38,49 @@ async function comprimirFoto(arquivo: File): Promise<string> {
 }
 
 /**
+ * Identifica o dispositivo que está fazendo a vistoria (antifraude: o backend
+ * cruza com o aparelho segurado — vistoria de outro celular cai em análise).
+ * Nada aqui pede permissão: só metadados que o navegador já expõe.
+ */
+async function coletarDispositivo(): Promise<string> {
+  const dados: Record<string, unknown> = {
+    ua: navigator.userAgent,
+    tela: `${screen.width}x${screen.height}@${window.devicePixelRatio}`,
+    toque: navigator.maxTouchPoints,
+    nucleos: navigator.hardwareConcurrency,
+  };
+  try {
+    // Android/Chrome expõe o modelo exato (ex.: "SM-S918B") via Client Hints.
+    const uaData = (
+      navigator as Navigator & {
+        userAgentData?: {
+          platform?: string;
+          getHighEntropyValues?: (hints: string[]) => Promise<Record<string, string>>;
+        };
+      }
+    ).userAgentData;
+    if (uaData?.getHighEntropyValues) {
+      const altos = await uaData.getHighEntropyValues(['model', 'platform', 'platformVersion']);
+      if (altos.model) dados.modelo = altos.model;
+      if (altos.platform) dados.plataforma = altos.platform;
+      if (altos.platformVersion) dados.versaoSo = altos.platformVersion;
+    } else if (uaData?.platform) {
+      dados.plataforma = uaData.platform;
+    }
+  } catch {
+    // segue só com o user-agent
+  }
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+    if (gl && ext) dados.gpu = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+  } catch {
+    // segue sem GPU
+  }
+  return JSON.stringify(dados).slice(0, 2000);
+}
+
+/**
  * Vistoria remota (M2): o CLIENTE abre este link no próprio celular, confirma
  * o IMEI (*#06#) e envia 3 fotos. Antifraude: prova que o aparelho existe,
  * liga e está com o cliente NO MOMENTO da contratação.
@@ -112,7 +155,7 @@ export function VistoriaRemota() {
             imei: imei.replace(/\D/g, ''),
             fotos: FOTOS.map((f) => ({ tipo: f.tipo, base64: fotos[f.tipo] ?? '' })),
             geolocalizacao: geo,
-            dispositivo: `${navigator.userAgent} | ${screen.width}x${screen.height}`,
+            dispositivo: await coletarDispositivo(),
           },
         },
       );

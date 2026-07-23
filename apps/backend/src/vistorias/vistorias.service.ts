@@ -25,9 +25,12 @@ import {
 import { CreateVistoriaDto } from './dto/create-vistoria.dto';
 import { ConcluirVistoriaRemotaDto } from './dto/concluir-vistoria-remota.dto';
 import {
+  DISPOSITIVO_MAX,
   TOKEN_VALIDADE_MINUTOS,
+  conferirDispositivo,
   gerarTokenPublico,
   hashFoto,
+  identificarDispositivo,
   imeiConfere,
   normalizarImei,
   tokenExpirado,
@@ -196,6 +199,20 @@ export class VistoriasService {
     }
 
     const confere = imeiConfere(dto.imei, vistoria.aparelho.imei);
+    // Antifraude: a vistoria deve ser feita DO PRÓPRIO aparelho segurado —
+    // plataforma trocada (Apple×Android) ou navegador de PC derruba pra análise.
+    const dispositivo = identificarDispositivo(dto.dispositivo);
+    const compat = conferirDispositivo(dispositivo, vistoria.aparelho);
+    const aprovada = confere && compat.compativel !== false;
+    const motivos: string[] = [];
+    if (!confere) {
+      motivos.push(
+        `IMEI divergente na vistoria remota (final ...${normalizarImei(dto.imei).slice(-4)} ≠ cadastrado ...${vistoria.aparelho.imei.slice(-4)}).`,
+      );
+    }
+    if (compat.compativel === false) {
+      motivos.push(`Dispositivo divergente: ${compat.motivo}.`);
+    }
     const atualizada = await this.prisma.vistoria.update({
       where: { id: vistoria.id },
       data: {
@@ -204,28 +221,34 @@ export class VistoriasService {
         geolocalizacao: dto.geolocalizacao
           ? (dto.geolocalizacao as unknown as Prisma.InputJsonValue)
           : undefined,
-        deviceFingerprint: dto.dispositivo?.slice(0, 1000),
+        deviceFingerprint: JSON.stringify({
+          identificado: dispositivo,
+          compativel: compat.compativel,
+          bruto: dto.dispositivo,
+        }).slice(0, DISPOSITIVO_MAX * 2),
         concluidaEm: new Date(),
-        status: confere ? 'APROVADA' : 'EM_ANALISE',
-        motivoReprova: confere
-          ? null
-          : `IMEI divergente na vistoria remota (final ...${normalizarImei(dto.imei).slice(-4)} ≠ cadastrado ...${vistoria.aparelho.imei.slice(-4)}).`,
+        status: aprovada ? 'APROVADA' : 'EM_ANALISE',
+        motivoReprova: aprovada ? null : motivos.join(' '),
       },
     });
     await this.audit(vistoria.id, {
       evento: 'vistoria_remota_concluida',
       imeiConfere: confere,
+      dispositivo: dispositivo as unknown as Prisma.InputJsonValue,
+      dispositivoCompativel: compat.compativel,
       fotos: fotos.map((f) => ({ tipo: f.tipo, hashSha256: f.hashSha256 })),
       geolocalizacao: dto.geolocalizacao ?? null,
     });
     this.logger.log(
-      `Vistoria ${vistoria.id} concluída pelo cliente — IMEI ${confere ? 'confere (APROVADA)' : 'DIVERGENTE (EM_ANALISE)'}.`,
+      `Vistoria ${vistoria.id} concluída pelo cliente — ${aprovada ? 'APROVADA' : `EM_ANALISE (${motivos.join(' ')})`}`,
     );
     return {
       status: atualizada.status,
-      mensagem: confere
+      mensagem: aprovada
         ? 'Vistoria aprovada! Pode voltar ao balcão para concluir a contratação.'
-        : 'Vistoria recebida, mas o IMEI não confere com o cadastrado. Nossa equipe vai analisar — avise o vendedor.',
+        : !confere
+          ? 'Vistoria recebida, mas o IMEI não confere com o cadastrado. Nossa equipe vai analisar — avise o vendedor.'
+          : 'Vistoria recebida, mas precisa ser feita do próprio aparelho que está sendo protegido. Nossa equipe vai analisar — avise o vendedor.',
     };
   }
 
