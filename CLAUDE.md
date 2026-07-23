@@ -439,6 +439,14 @@ ESTIPULANTE_RAZAO, ESTIPULANTE_CNPJ, SOLATIUM_CNPJ, CONDICOES_GERAIS_URL, SEGURA
       (SOLATIUM ADM., CNPJ 26338058000133) com chave Pix EVP ATIVA — cobrança
       PIX + QR testados via API.
       Gate verde: lint + typecheck + **87 testes** + build 4/4.
+- [x] **Device check na vistoria remota (23/07/2026, branch
+      `feat/vistoria-device-check`)**: a página pública agora coleta a identidade
+      técnica do dispositivo (user-agent, modelo via Client Hints no Android,
+      GPU WebGL, tela, toque) e o backend cruza com o aparelho segurado
+      (`identificarDispositivo` + `conferirDispositivo`): plataforma trocada
+      (Apple×Android) ou navegador de computador → EM_ANALISE mesmo com IMEI
+      correto; casos inconclusivos não bloqueiam (IMEI segue como gate) e tudo
+      fica em `deviceFingerprint` (JSON) + audit pro backoffice.
 - [ ] Pendente do M2: OCR do IMEI na foto, raio de geolocalização vs loja,
-      device fingerprint × aparelho declarado (hoje registra, não compara).
-- Última atualização: 11/07/2026
+      match fino de modelo Android (marca/modelo comercial × código do fabricante).
+- Última atualização: 23/07/2026
