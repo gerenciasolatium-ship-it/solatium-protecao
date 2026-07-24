@@ -91,8 +91,21 @@ export interface StorageProvider {
   urlAssinada(chave: string, expiraSegundos?: number): Promise<string>;
 }
 
+export interface OcrImeiResultado {
+  /** false = OCR indisponível (sem env/erro) — o chamador trata como inconclusivo. */
+  disponivel: boolean;
+  /** IMEIs (14–16 dígitos) lidos na imagem. */
+  imeis: string[];
+}
+
+export interface OcrProvider {
+  /** Lê os IMEIs visíveis na foto da tela do *#06#. NUNCA lança — erro vira indisponível. */
+  extrairImeis(fotoBase64Jpeg: string): Promise<OcrImeiResultado>;
+}
+
 // Tokens de injeção (DI).
 export const PAYMENT_PROVIDER = Symbol('PAYMENT_PROVIDER');
 export const MESSAGING_PROVIDER = Symbol('MESSAGING_PROVIDER');
 export const EMAIL_PROVIDER = Symbol('EMAIL_PROVIDER');
 export const STORAGE_PROVIDER = Symbol('STORAGE_PROVIDER');
+export const OCR_PROVIDER = Symbol('OCR_PROVIDER');

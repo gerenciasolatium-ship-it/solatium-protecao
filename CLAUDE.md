@@ -323,7 +323,11 @@ R2_ACCESS_KEY/SECRET/BUCKET/ENDPOINT/PUBLIC_URL, DATABASE_URL, REDIS_URL, JWT_SE
 PUBLIC_VALIDAR_URL (base do link/QR de validação),
 APP_LOJA_URL (CORS + base do link pré-preenchido da API de parceiros M11),
 SERPRO_CONSULTA_CPF_TOKEN / SERPRO_CONSULTA_CPF_URL (KYC CPF — opcional; sem elas
-o /kyc/cpf responde 501 e o wizard segue com digitação manual; ver docs/KYC-CPF.md).
+o /kyc/cpf responde 501 e o wizard segue com digitação manual; ver docs/KYC-CPF.md),
+GEMINI_API_KEY / GEMINI_MODEL (OCR do IMEI na foto da vistoria — opcional; sem a chave o
+OCR é pulado e a vistoria segue só com IMEI digitado + device check),
+VISTORIA_TOKEN_VALIDADE_MINUTOS (default 60), VISTORIA_RAIO_LOJA_METROS (default 500 —
+geofence só atua se a loja tiver latitude/longitude cadastradas).
 Rodapé legal do bilhete (vazias → marca d'água "AMBIENTE DE TESTE — SEM VALIDADE"):
 SEGURADORA_NOME, SEGURADORA_CNPJ, APOLICE_NUMERO, PROCESSO_SUSEP,
 ESTIPULANTE_RAZAO, ESTIPULANTE_CNPJ, SOLATIUM_CNPJ, CONDICOES_GERAIS_URL, SEGURADORA_CENTRAL_TEL

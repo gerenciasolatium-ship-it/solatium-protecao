@@ -1,9 +1,14 @@
 import {
   conferirDispositivo,
+  conferirGeolocalizacao,
+  distanciaMetros,
+  extrairImeisDeTexto,
   gerarTokenPublico,
   hashFoto,
   identificarDispositivo,
   imeiConfere,
+  imeiOcrConfere,
+  marcasDoModeloAndroid,
   tokenExpirado,
   validarFotos,
 } from './vistoria-remota.util';
@@ -152,5 +157,120 @@ describe('vistoria remota — identificação do dispositivo', () => {
   it('sem metadados → inconclusivo (não bloqueia; IMEI segue como gate)', () => {
     const r = conferirDispositivo(null, IPHONE_15);
     expect(r.compativel).toBeNull();
+  });
+});
+
+describe('vistoria remota — match fino Android (marca pelo código do modelo)', () => {
+  it('infere as marcas principais pelos códigos de fabricante', () => {
+    expect(marcasDoModeloAndroid('SM-S918B')).toEqual(['samsung']);
+    expect(marcasDoModeloAndroid('moto g84 5G')).toEqual(['motorola']);
+    expect(marcasDoModeloAndroid('XT2303-2')).toEqual(['motorola']);
+    expect(marcasDoModeloAndroid('Redmi Note 13')).toEqual(['xiaomi']);
+    expect(marcasDoModeloAndroid('POCO X6 Pro')).toEqual(['xiaomi']);
+    expect(marcasDoModeloAndroid('RMX3999')).toEqual(['realme']);
+    expect(marcasDoModeloAndroid('CPH2581')).toEqual(['oppo', 'oneplus']);
+    expect(marcasDoModeloAndroid('Pixel 8')).toEqual(['google']);
+    expect(marcasDoModeloAndroid('V2334')).toEqual(['vivo']);
+  });
+
+  it('código desconhecido ou vazio → [] (inconclusivo)', () => {
+    expect(marcasDoModeloAndroid('ABC-123')).toEqual([]);
+    expect(marcasDoModeloAndroid(undefined)).toEqual([]);
+    expect(marcasDoModeloAndroid('')).toEqual([]);
+  });
+
+  const GALAXY = { marca: 'Samsung', modelo: 'Galaxy S23 Ultra' };
+
+  it('Samsung segurado + vistoria de um Motorola → divergente', () => {
+    const r = conferirDispositivo({ plataforma: 'Android', modelo: 'moto g84 5G' }, GALAXY);
+    expect(r.compativel).toBe(false);
+    expect(r.motivo).toContain('motorola');
+  });
+
+  it('Samsung segurado + vistoria de um Samsung → compatível', () => {
+    const r = conferirDispositivo({ plataforma: 'Android', modelo: 'SM-S918B' }, GALAXY);
+    expect(r.compativel).toBe(true);
+  });
+
+  it('código de modelo desconhecido não bloqueia', () => {
+    const r = conferirDispositivo({ plataforma: 'Android', modelo: 'ZZ-000' }, GALAXY);
+    expect(r.compativel).toBe(true);
+  });
+
+  it('marca segurada fora do vocabulário não bloqueia', () => {
+    const r = conferirDispositivo(
+      { plataforma: 'Android', modelo: 'SM-S918B' },
+      { marca: 'Multilaser', modelo: 'M10' },
+    );
+    expect(r.compativel).toBe(true);
+  });
+});
+
+describe('vistoria remota — geofence da loja', () => {
+  // Av. Paulista, São Paulo — dois pontos ~370 m entre si e um em Campinas.
+  const LOJA = { latitude: -23.5614, longitude: -46.6559 };
+  const NA_LOJA = { lat: -23.5614, lng: -46.6559 };
+  const PERTO = { lat: -23.5645, lng: -46.6542 }; // ~380 m
+  const LONGE = { lat: -22.9099, lng: -47.0626 }; // Campinas, ~80 km
+
+  it('distância haversine bate com a régua', () => {
+    expect(distanciaMetros(NA_LOJA, NA_LOJA)).toBe(0);
+    const d = distanciaMetros(NA_LOJA, PERTO);
+    expect(d).toBeGreaterThan(250);
+    expect(d).toBeLessThan(500);
+    expect(distanciaMetros(NA_LOJA, LONGE)).toBeGreaterThan(50_000);
+  });
+
+  it('dentro do raio → ok; longe → fora com motivo', () => {
+    expect(conferirGeolocalizacao(NA_LOJA, LOJA).dentroRaio).toBe(true);
+    expect(conferirGeolocalizacao(PERTO, LOJA).dentroRaio).toBe(true);
+    const fora = conferirGeolocalizacao(LONGE, LOJA);
+    expect(fora.dentroRaio).toBe(false);
+    expect(fora.motivo).toContain('km da loja');
+  });
+
+  it('imprecisão do GPS desconta até 200 m, não mais', () => {
+    const borda = { lat: -23.5674, lng: -46.6559, precisao: 200 }; // ~660 m
+    expect(conferirGeolocalizacao(borda, LOJA).dentroRaio).toBe(true);
+    const bordaImprecisaDemais = { lat: -23.5704, lng: -46.6559, precisao: 5000 }; // ~1 km
+    expect(conferirGeolocalizacao(bordaImprecisaDemais, LOJA).dentroRaio).toBe(false);
+  });
+
+  it('sem geo do cliente ou loja sem coordenadas → inconclusivo', () => {
+    expect(conferirGeolocalizacao(undefined, LOJA).dentroRaio).toBeNull();
+    expect(
+      conferirGeolocalizacao(NA_LOJA, { latitude: null, longitude: null }).dentroRaio,
+    ).toBeNull();
+  });
+
+  it('raio customizado é respeitado', () => {
+    expect(conferirGeolocalizacao(PERTO, LOJA, 100).dentroRaio).toBe(false);
+  });
+});
+
+describe('vistoria remota — OCR do IMEI', () => {
+  it('extrai IMEIs de texto livre (com espaços/traços, dual-SIM)', () => {
+    const texto = 'IMEI 1: 350147160259436\nIMEI 2: 35-014716-025944-4\nSérie: ABC';
+    expect(extrairImeisDeTexto(texto)).toEqual(['350147160259436', '350147160259444']);
+  });
+
+  it('ignora sequências curtas/longas demais e deduplica', () => {
+    expect(extrairImeisDeTexto('123456 e 350147160259436 e 350147160259436')).toEqual([
+      '350147160259436',
+    ]);
+    expect(extrairImeisDeTexto('VAZIO')).toEqual([]);
+  });
+
+  it('confere pelos 14 primeiros dígitos (dígito verificador mal lido não reprova)', () => {
+    expect(imeiOcrConfere(['350147160259430'], '350147160259436')).toBe(true);
+    expect(imeiOcrConfere(['999999999999999'], '350147160259436')).toBe(false);
+  });
+
+  it('dual-SIM: basta um dos IMEIs conferir', () => {
+    expect(imeiOcrConfere(['111111111111111', '350147160259436'], '350147160259436')).toBe(true);
+  });
+
+  it('nenhum IMEI lido → inconclusivo (null)', () => {
+    expect(imeiOcrConfere([], '350147160259436')).toBeNull();
   });
 });
