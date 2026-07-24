@@ -338,6 +338,8 @@ model Vistoria {
   fotos             Json?          // [{ tipo, url, hashSha256, base64? (fallback sem R2) }]
   geolocalizacao    Json?          // { lat, lng, precisao }
   deviceFingerprint String?
+  // Resultado das checagens antifraude da conclusão: { ocr, geofence, dispositivo }.
+  analise           Json?
   status            VistoriaStatus @default(PENDENTE)
   motivoReprova     String?
   createdAt         DateTime       @default(now())

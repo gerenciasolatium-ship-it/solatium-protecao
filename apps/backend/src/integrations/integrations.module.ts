@@ -2,6 +2,7 @@ import { Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AsaasProvider } from './asaas.provider';
 import { DigisacProvider } from './digisac.provider';
+import { GeminiOcrProvider } from './gemini-ocr.provider';
 import { R2Provider } from './r2.provider';
 import { ResendProvider } from './resend.provider';
 import {
@@ -11,11 +12,14 @@ import {
   EmailProvider,
   MensagemInput,
   MessagingProvider,
+  OcrImeiResultado,
+  OcrProvider,
   PaymentProvider,
   StorageProvider,
   UploadInput,
   EMAIL_PROVIDER,
   MESSAGING_PROVIDER,
+  OCR_PROVIDER,
   PAYMENT_PROVIDER,
   STORAGE_PROVIDER,
 } from './interfaces';
@@ -56,6 +60,13 @@ class StubEmailProvider implements EmailProvider {
   }
 }
 
+class StubOcrProvider implements OcrProvider {
+  async extrairImeis(): Promise<OcrImeiResultado> {
+    logger.warn('[stub] OCR de IMEI pulado (GEMINI_API_KEY ausente)');
+    return { disponivel: false, imeis: [] };
+  }
+}
+
 class StubStorageProvider implements StorageProvider {
   async upload(input: UploadInput): Promise<{ url: string }> {
     logger.warn(`[stub] upload ignorado (R2_ACCESS_KEY ausente): ${input.chave}`);
@@ -92,7 +103,13 @@ class StubStorageProvider implements StorageProvider {
       useFactory: (config: ConfigService) =>
         config.get('R2_ACCESS_KEY') ? new R2Provider(config) : new StubStorageProvider(),
     },
+    {
+      provide: OCR_PROVIDER,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =>
+        config.get('GEMINI_API_KEY') ? new GeminiOcrProvider(config) : new StubOcrProvider(),
+    },
   ],
-  exports: [PAYMENT_PROVIDER, MESSAGING_PROVIDER, EMAIL_PROVIDER, STORAGE_PROVIDER],
+  exports: [PAYMENT_PROVIDER, MESSAGING_PROVIDER, EMAIL_PROVIDER, STORAGE_PROVIDER, OCR_PROVIDER],
 })
 export class IntegrationsModule {}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { apiFetch, ApiError } from '../lib/api';
 
 interface InfoVistoria {
@@ -87,6 +87,7 @@ async function coletarDispositivo(): Promise<string> {
  */
 export function VistoriaRemota() {
   const { token } = useParams<{ token: string }>();
+  const navigate = useNavigate();
   const [info, setInfo] = useState<InfoVistoria | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [imei, setImei] = useState('');
@@ -94,6 +95,7 @@ export function VistoriaRemota() {
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ status: string; mensagem: string } | null>(null);
   const [restante, setRestante] = useState<number | null>(null);
+  const [renovando, setRenovando] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -113,6 +115,28 @@ export function VistoriaRemota() {
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, [info]);
+
+  /** Link venceu → o próprio cliente pede um novo (fotos já tiradas continuam). */
+  async function gerarNovoLink() {
+    if (!token || renovando) return;
+    setRenovando(true);
+    setErro(null);
+    try {
+      const r = await apiFetch<{ token: string; expiraEm: string }>(
+        `/vistoria-remota/${token}/novo-link`,
+        { method: 'POST', auth: false },
+      );
+      navigate(`/vistoria/${r.token}`, { replace: true });
+    } catch (e) {
+      setErro(
+        e instanceof ApiError
+          ? e.message
+          : 'Não foi possível gerar um novo link. Peça ao vendedor para reenviar.',
+      );
+    } finally {
+      setRenovando(false);
+    }
+  }
 
   async function escolherFoto(tipo: TipoFoto, arquivo: File | undefined) {
     if (!arquivo) return;
@@ -169,6 +193,9 @@ export function VistoriaRemota() {
 
   const imeiDigitos = imei.replace(/\D/g, '');
   const pronto = imeiDigitos.length >= 14 && FOTOS.every((f) => fotos[f.tipo]);
+  // Vencido no backend OU contagem zerada na tela: mesmo tratamento.
+  const linkVencido =
+    info?.status === 'EXPIRADO' || (info?.status === 'PENDENTE' && restante === 0);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -199,12 +226,23 @@ export function VistoriaRemota() {
 
         {info && !resultado && (
           <>
-            {info.status === 'EXPIRADO' && (
+            {linkVencido && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center">
                 <div className="text-4xl">⏰</div>
                 <p className="mt-2 font-medium text-amber-800">
-                  Este link expirou. Peça ao vendedor da loja {info.loja} para reenviar — você
-                  recebe um link novo no WhatsApp na hora.
+                  Este link expirou — mas é só gerar outro e continuar daqui mesmo. Suas fotos já
+                  tiradas não se perdem.
+                </p>
+                {erro && <p className="mt-2 text-sm text-red-700">{erro}</p>}
+                <button
+                  onClick={() => void gerarNovoLink()}
+                  disabled={renovando}
+                  className="mt-4 w-full rounded-xl bg-sol-verde py-3 text-base font-semibold text-white transition active:scale-[0.99] disabled:opacity-50"
+                >
+                  {renovando ? 'Gerando novo link…' : 'Gerar novo link e continuar'}
+                </button>
+                <p className="mt-2 text-xs text-amber-700">
+                  Se não funcionar, peça ao vendedor da loja {info.loja} para reenviar o link.
                 </p>
               </div>
             )}
@@ -223,7 +261,7 @@ export function VistoriaRemota() {
               </div>
             )}
 
-            {info.status === 'PENDENTE' && (
+            {info.status === 'PENDENTE' && !linkVencido && (
               <div className="space-y-4">
                 <p className="text-sm text-slate-600">
                   Olá, <strong>{info.clientePrimeiroNome}</strong>! Para ativar a proteção do seu{' '}

@@ -22,6 +22,16 @@ export class VistoriaRemotaController {
   }
 
   @Public()
+  @Post(':token/novo-link')
+  @ApiOperation({
+    summary:
+      'Link expirou → o próprio cliente gera um novo token (vistoria PENDENTE, criada há <24h).',
+  })
+  novoLink(@Param('token') token: string) {
+    return this.vistorias.novoLinkPorToken(token);
+  }
+
+  @Public()
   @Post(':token/concluir')
   @ApiOperation({
     summary: 'Cliente conclui a vistoria: IMEI + 3 fotos + geolocalização + metadados.',

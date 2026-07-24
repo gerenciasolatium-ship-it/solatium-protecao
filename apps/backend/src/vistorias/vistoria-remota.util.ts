@@ -1,7 +1,22 @@
 import { createHash, randomBytes } from 'crypto';
 
-/** Validade do link de vistoria remota enviado ao cliente (M2). */
-export const TOKEN_VALIDADE_MINUTOS = 30;
+/** Validade padrão do link de vistoria remota (env VISTORIA_TOKEN_VALIDADE_MINUTOS). */
+export const TOKEN_VALIDADE_MINUTOS = 60;
+
+/** Janela máxima pra renovar o link pela própria página pública (desde a criação). */
+export const RENOVACAO_JANELA_HORAS = 24;
+
+/** Intervalo mínimo entre envios de link (renovação/reenvio) — evita spam. */
+export const REENVIO_INTERVALO_SEGUNDOS = 60;
+
+/** Fila BullMQ da vistoria remota (lembrete de link prestes a vencer). */
+export const FILA_VISTORIA = 'vistoria';
+export const JOB_LEMBRETE_VISTORIA = 'lembrete-vistoria';
+export interface LembreteVistoriaJob {
+  vistoriaId: string;
+  /** Token vigente quando o lembrete foi agendado — se mudou, o job se cala. */
+  token: string;
+}
 
 /** Fotos obrigatórias da vistoria remota, nesta ordem. */
 export const TIPOS_FOTO_OBRIGATORIOS = ['frente', 'verso', 'imei'] as const;
@@ -128,6 +143,45 @@ function aparelhoEhApple(aparelho: { marca: string; modelo: string }): boolean {
 }
 
 /**
+ * Marcas Android inferíveis pelo código de fabricante que o navegador reporta
+ * (Client Hints/user-agent). Só entram padrões inequívocos — código ambíguo
+ * (ex.: CPH serve a OPPO e OnePlus) lista todas as marcas possíveis.
+ */
+const MARCAS_POR_CODIGO: Array<{ padrao: RegExp; marcas: string[] }> = [
+  { padrao: /^(SM-|GT-|SAMSUNG)/i, marcas: ['samsung'] },
+  { padrao: /^(moto ?|XT\d{3,4})/i, marcas: ['motorola'] },
+  { padrao: /^(Redmi|POCO|Mi(?:\s|$)|Xiaomi)/i, marcas: ['xiaomi'] },
+  { padrao: /^RMX\d/i, marcas: ['realme'] },
+  { padrao: /^CPH\d/i, marcas: ['oppo', 'oneplus'] },
+  { padrao: /^Pixel ?\d/i, marcas: ['google'] },
+  { padrao: /^(vivo |V\d{4})/i, marcas: ['vivo'] },
+  { padrao: /^(LM-|LG-)/i, marcas: ['lg'] },
+  { padrao: /^ASUS/i, marcas: ['asus'] },
+  { padrao: /^Infinix/i, marcas: ['infinix'] },
+  { padrao: /^TECNO/i, marcas: ['tecno'] },
+  { padrao: /^Nokia/i, marcas: ['nokia'] },
+];
+
+/** Vocabulário de marcas que o match fino sabe reconhecer na marca cadastrada. */
+const MARCAS_CONHECIDAS = new Set(MARCAS_POR_CODIGO.flatMap((m) => m.marcas));
+
+/** Marcas possíveis do modelo Android reportado pelo navegador ([] = não sei). */
+export function marcasDoModeloAndroid(modelo: string | undefined): string[] {
+  if (!modelo?.trim()) return [];
+  const alvo = modelo.trim();
+  for (const { padrao, marcas } of MARCAS_POR_CODIGO) {
+    if (padrao.test(alvo)) return marcas;
+  }
+  return [];
+}
+
+/** Normaliza a marca cadastrada pra comparar com o vocabulário ('Samsung ' → 'samsung'). */
+function marcaSeguradaConhecida(aparelho: { marca: string }): string | null {
+  const marca = aparelho.marca.trim().toLowerCase();
+  return MARCAS_CONHECIDAS.has(marca) ? marca : null;
+}
+
+/**
  * Cruza o dispositivo que fez a vistoria com o aparelho segurado (antifraude:
  * a vistoria DEVE ser feita do próprio aparelho que está sendo protegido).
  * `compativel: false` só em divergência inequívoca (plataforma trocada ou
@@ -158,5 +212,110 @@ export function conferirDispositivo(
       motivo: `aparelho segurado é ${aparelho.marca} ${aparelho.modelo}, mas a vistoria foi feita de um iPhone/iPad`,
     };
   }
+  // Match fino Android: código do fabricante (ex.: SM-S918B) × marca cadastrada.
+  // Só reprova quando AMBOS os lados são inequívocos; código desconhecido ou
+  // marca fora do vocabulário não bloqueiam (IMEI segue como gate principal).
+  if (ident.plataforma === 'Android' && !ehApple) {
+    const marcaSegurada = marcaSeguradaConhecida(aparelho);
+    const marcasDoDispositivo = marcasDoModeloAndroid(ident.modelo);
+    if (
+      marcaSegurada &&
+      marcasDoDispositivo.length &&
+      !marcasDoDispositivo.includes(marcaSegurada)
+    ) {
+      return {
+        compativel: false,
+        motivo: `aparelho segurado é ${aparelho.marca} ${aparelho.modelo}, mas a vistoria foi feita de um ${ident.modelo} (${marcasDoDispositivo.join('/')})`,
+      };
+    }
+  }
   return { compativel: true };
+}
+
+// ---------------------------------------------------------------------------
+// Geofence: a vistoria acontece no balcão — longe da loja cai pra análise.
+// ---------------------------------------------------------------------------
+
+/** Raio padrão aceito em volta da loja (env VISTORIA_RAIO_LOJA_METROS). */
+export const RAIO_LOJA_PADRAO_METROS = 500;
+
+/** Teto de desconto pela imprecisão do GPS (precisões absurdas não furam o raio). */
+const PRECISAO_MAX_METROS = 200;
+
+/** Distância haversine em metros entre dois pontos lat/lng. */
+export function distanciaMetros(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6_371_000;
+  const rad = (g: number) => (g * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(h)));
+}
+
+export interface GeofenceResultado {
+  /** null = inconclusivo (sem geo do cliente ou loja sem coordenadas). */
+  dentroRaio: boolean | null;
+  distanciaMetros?: number;
+  raioMetros?: number;
+  motivo?: string;
+}
+
+/**
+ * Cruza a geolocalização da vistoria com as coordenadas da loja. Desconta a
+ * imprecisão reportada pelo GPS (até 200 m) antes de comparar com o raio;
+ * inconclusivo (sem dados de um dos lados) não bloqueia.
+ */
+export function conferirGeolocalizacao(
+  geo: { lat: number; lng: number; precisao?: number } | null | undefined,
+  loja: { latitude: number | null; longitude: number | null },
+  raioMetros = RAIO_LOJA_PADRAO_METROS,
+): GeofenceResultado {
+  if (!geo || loja.latitude == null || loja.longitude == null) return { dentroRaio: null };
+  const distancia = distanciaMetros(geo, { lat: loja.latitude, lng: loja.longitude });
+  const desconto = Math.min(Math.max(geo.precisao ?? 0, 0), PRECISAO_MAX_METROS);
+  const efetiva = Math.max(0, distancia - desconto);
+  if (efetiva <= raioMetros) return { dentroRaio: true, distanciaMetros: distancia, raioMetros };
+  return {
+    dentroRaio: false,
+    distanciaMetros: distancia,
+    raioMetros,
+    motivo: `vistoria concluída a ~${distancia >= 1000 ? `${(distancia / 1000).toFixed(1)} km` : `${distancia} m`} da loja (raio aceito: ${raioMetros} m)`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// OCR do IMEI: o que a foto do *#06# mostra tem que bater com o cadastrado.
+// ---------------------------------------------------------------------------
+
+/**
+ * Extrai candidatos a IMEI (14–16 dígitos) de um texto livre vindo do OCR.
+ * Quebra de linha separa IMEIs (dual-SIM vem um por linha na tela do *#06#);
+ * espaço/ponto/traço DENTRO da linha são separadores de leitura ("35 014716…").
+ */
+export function extrairImeisDeTexto(texto: string): string[] {
+  const imeis = new Set<string>();
+  for (const linha of texto.split(/[\r\n]+/)) {
+    const achados = linha.replace(/[.\-–]/g, ' ').match(/\d[\d ]{12,20}\d/g) ?? [];
+    for (const bruto of achados) {
+      const digitos = bruto.replace(/\D/g, '');
+      if (digitos.length >= 14 && digitos.length <= 16) imeis.add(digitos);
+    }
+  }
+  return [...imeis];
+}
+
+/**
+ * O IMEI lido na foto confere com o cadastrado? Compara pelos 14 primeiros
+ * dígitos (o 15º é dígito verificador — leitura ruim dele não pode reprovar).
+ * null = OCR não leu nenhum IMEI (inconclusivo, não bloqueia).
+ */
+export function imeiOcrConfere(imeisLidos: string[], cadastrado: string): boolean | null {
+  if (!imeisLidos.length) return null;
+  const alvo = normalizarImei(cadastrado).slice(0, 14);
+  if (alvo.length < 14) return null;
+  return imeisLidos.some((lido) => normalizarImei(lido).slice(0, 14) === alvo);
 }
