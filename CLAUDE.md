@@ -323,7 +323,9 @@ R2_ACCESS_KEY/SECRET/BUCKET/ENDPOINT/PUBLIC_URL, DATABASE_URL, REDIS_URL, JWT_SE
 PUBLIC_VALIDAR_URL (base do link/QR de validação),
 APP_LOJA_URL (CORS + base do link pré-preenchido da API de parceiros M11),
 SERPRO_CONSULTA_CPF_TOKEN / SERPRO_CONSULTA_CPF_URL (KYC CPF — opcional; sem elas
-o /kyc/cpf responde 501 e o wizard segue com digitação manual; ver docs/KYC-CPF.md).
+o /kyc/cpf responde 501 e o wizard segue com digitação manual; ver docs/KYC-CPF.md),
+PIX_FALLBACK_BOLETO_MINUTOS (default 30; 0 desliga — Pix do balcão não pago no prazo →
+cancela, gera boleto D+3 e manda o link no WhatsApp do cliente automaticamente).
 Rodapé legal do bilhete (vazias → marca d'água "AMBIENTE DE TESTE — SEM VALIDADE"):
 SEGURADORA_NOME, SEGURADORA_CNPJ, APOLICE_NUMERO, PROCESSO_SUSEP,
 ESTIPULANTE_RAZAO, ESTIPULANTE_CNPJ, SOLATIUM_CNPJ, CONDICOES_GERAIS_URL, SEGURADORA_CENTRAL_TEL

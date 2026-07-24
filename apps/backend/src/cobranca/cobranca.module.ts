@@ -1,9 +1,11 @@
 import { InjectQueue, BullModule } from '@nestjs/bullmq';
 import { Logger, Module, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { ContratosModule } from '../contratos/contratos.module';
 import { FinanceiroModule } from '../financeiro/financeiro.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
-import { CobrancaProcessor, FILA_COBRANCA, JOB_INADIMPLENCIA } from './cobranca.processor';
+import { FILA_COBRANCA, JOB_INADIMPLENCIA } from './cobranca.const';
+import { CobrancaProcessor } from './cobranca.processor';
 import { InadimplenciaService } from './inadimplencia.service';
 
 /**
@@ -23,6 +25,7 @@ import { InadimplenciaService } from './inadimplencia.service';
     }),
     FinanceiroModule,
     IntegrationsModule,
+    ContratosModule,
   ],
   providers: [InadimplenciaService, CobrancaProcessor],
   exports: [InadimplenciaService],
