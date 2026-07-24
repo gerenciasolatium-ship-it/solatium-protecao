@@ -1,3 +1,4 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import {
   BadRequestException,
   ConflictException,
@@ -7,17 +8,27 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Queue } from 'bullmq';
 import { FormaPagamento, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AparelhosService } from '../aparelhos/aparelhos.service';
 import { UsuarioAutenticado } from '../common/decorators/current-user.decorator';
+import { FILA_COBRANCA, JOB_PIX_FALLBACK, PixFallbackJob } from '../cobranca/cobranca.const';
 import {
   CobrancaResult,
+  MESSAGING_PROVIDER,
+  MessagingProvider,
   PAYMENT_PROVIDER,
   PaymentProvider,
   SplitInput,
 } from '../integrations/interfaces';
 import { CreateContratoDto, NovaCobrancaDto } from './dto/create-contrato.dto';
+import {
+  BOLETO_FALLBACK_VENCIMENTO_DIAS,
+  PIX_FALLBACK_PADRAO_MINUTOS,
+  podeAplicarFallbackPix,
+} from './pix-fallback.util';
 
 const TIPO_PAGAMENTO: Record<FormaPagamento, 'PIX' | 'CARTAO' | 'BOLETO'> = {
   PIX: 'PIX',
@@ -38,8 +49,17 @@ export class ContratosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aparelhos: AparelhosService,
+    private readonly config: ConfigService,
     @Inject(PAYMENT_PROVIDER) private readonly pagamento: PaymentProvider,
+    @Inject(MESSAGING_PROVIDER) private readonly whatsapp: MessagingProvider,
+    @InjectQueue(FILA_COBRANCA) private readonly filaCobranca: Queue<PixFallbackJob>,
   ) {}
+
+  /** Prazo do Pix do balcão antes do fallback pra boleto (0 = desligado). */
+  private get pixFallbackMinutos(): number {
+    const env = Number(this.config.get<string>('PIX_FALLBACK_BOLETO_MINUTOS'));
+    return Number.isFinite(env) && env >= 0 ? Math.floor(env) : PIX_FALLBACK_PADRAO_MINUTOS;
+  }
 
   async create(dto: CreateContratoDto, usuario: UsuarioAutenticado) {
     const vistoria = await this.prisma.vistoria.findUnique({
@@ -268,6 +288,7 @@ export class ContratosService {
     forma: FormaPagamento,
     parcelas: number,
     valor: number,
+    opts?: { vencimento?: string; fallbackDe?: 'PIX' },
   ): Promise<CobrancaResult> {
     const contrato = await this.prisma.contrato.findUniqueOrThrow({
       where: { id: contratoId },
@@ -315,6 +336,7 @@ export class ContratosService {
       parcelas,
       descricao: `Proteção Solatium — ${contrato.aparelho.marca} ${contrato.aparelho.modelo} (IMEI final ${contrato.aparelho.imei.slice(-4)})`,
       referenciaExterna: contrato.id,
+      vencimento: opts?.vencimento,
       split,
     });
 
@@ -327,7 +349,7 @@ export class ContratosService {
         tipo: TIPO_PAGAMENTO[forma],
         valor,
         split: split ? (split as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-        vencimento: new Date(),
+        vencimento: opts?.vencimento ? new Date(`${opts.vencimento}T12:00:00-03:00`) : new Date(),
       },
     });
 
@@ -343,11 +365,114 @@ export class ContratosService {
           pixCopiaCola: cobranca.pixCopiaCola,
           pixQrCodeBase64: cobranca.pixQrCodeBase64,
           boletoUrl: cobranca.boletoUrl,
+          fallbackDe: opts?.fallbackDe,
         } as unknown as Prisma.InputJsonValue,
       },
     });
 
+    // "Não perder venda": Pix ignorado no balcão → boleto automático no WhatsApp.
+    if (forma === 'PIX' && this.pixFallbackMinutos > 0) {
+      await this.filaCobranca
+        .add(
+          JOB_PIX_FALLBACK,
+          { contratoId: contrato.id, asaasId: cobranca.provedorId },
+          {
+            delay: this.pixFallbackMinutos * 60_000,
+            jobId: `pix-fallback-${cobranca.provedorId}`,
+            removeOnComplete: true,
+            removeOnFail: true,
+          },
+        )
+        .catch((erro) => this.logger.warn(`Falha ao agendar fallback do Pix: ${erro}`));
+    }
+
     return cobranca;
+  }
+
+  /**
+   * Job atrasado do "não perder venda": o Pix do balcão não foi pago no prazo →
+   * cancela a cobrança Pix, gera boleto (vence em 3 dias; a página do Asaas
+   * também aceita Pix) e manda o link no WhatsApp do cliente. Não roda se a
+   * cobrança do checkout mudou, se já confirmou pagamento ou se já emitiu.
+   */
+  async fallbackPixParaBoleto(job: PixFallbackJob) {
+    const contrato = await this.prisma.contrato.findUnique({
+      where: { id: job.contratoId },
+      include: {
+        cliente: true,
+        aparelho: true,
+        plano: true,
+        certificado: true,
+        pagamentos: { where: { status: 'CONFIRMADO' } },
+      },
+    });
+    if (!contrato) return { aplicado: false, motivo: 'contrato não existe mais' };
+
+    const checkout = (contrato.checkout ?? {}) as { asaasId?: string };
+    const pagamentoPix = await this.prisma.pagamento.findUnique({
+      where: { asaasId: job.asaasId },
+    });
+    const decisao = podeAplicarFallbackPix({
+      jobAsaasId: job.asaasId,
+      checkoutAsaasId: checkout.asaasId,
+      temCertificado: Boolean(contrato.certificado),
+      temPagamentoConfirmado: contrato.pagamentos.length > 0,
+      statusPagamentoPix: pagamentoPix?.status ?? null,
+    });
+    if (!decisao.aplicar) {
+      this.logger.log(`Fallback Pix→boleto pulado (${contrato.id}): ${decisao.motivo}`);
+      return { aplicado: false, motivo: decisao.motivo };
+    }
+
+    await this.cancelarCobrancaAnterior(contrato.id, contrato.checkout);
+    const { valorCobranca, premioTotal, parcelas } = this.precificar(contrato.plano, 'BOLETO');
+    await this.prisma.contrato.update({
+      where: { id: contrato.id },
+      data: { formaPagamento: 'BOLETO', parcelas, premioTotal },
+    });
+    const vencimento = new Date(Date.now() + BOLETO_FALLBACK_VENCIMENTO_DIAS * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const cobranca = await this.gerarCobranca(contrato.id, 'BOLETO', parcelas, valorCobranca, {
+      vencimento,
+      fallbackDe: 'PIX',
+    });
+
+    const link = cobranca.boletoUrl ?? cobranca.linkPagamento;
+    const primeiroNome = contrato.cliente.nome.trim().split(/\s+/)[0];
+    const texto =
+      `💳 ${primeiroNome}, ficou faltando só o pagamento para ativar a proteção do seu ` +
+      `${contrato.aparelho.marca} ${contrato.aparelho.modelo}. Geramos um boleto que vence em ` +
+      `${BOLETO_FALLBACK_VENCIMENTO_DIAS} dias — pela página você também pode pagar com Pix ou cartão:\n${link}`;
+    let enviado = false;
+    try {
+      enviado = (
+        await this.whatsapp.enviarWhatsapp({
+          telefone: contrato.cliente.telefoneWhatsapp,
+          texto,
+        })
+      ).enviado;
+    } catch (erro) {
+      this.logger.warn(`Falha no WhatsApp do fallback (${contrato.id}): ${erro}`);
+    }
+    await this.prisma.notificacaoLog
+      .create({
+        data: {
+          canal: 'WHATSAPP',
+          template: 'pix_fallback_boleto',
+          status: enviado ? 'ENVIADO' : 'FALHA',
+          payload: {
+            contratoId: contrato.id,
+            telefone: contrato.cliente.telefoneWhatsapp,
+            boletoUrl: link ?? null,
+          },
+        },
+      })
+      .catch(() => undefined);
+    this.logger.log(
+      `Fallback Pix→boleto aplicado no contrato ${contrato.id} (WhatsApp ${enviado ? 'enviado' : 'falhou'}).`,
+    );
+    return { aplicado: true, enviado };
   }
 
   /**

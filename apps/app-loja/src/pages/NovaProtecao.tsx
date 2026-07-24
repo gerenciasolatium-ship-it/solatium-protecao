@@ -87,6 +87,8 @@ interface Checkout {
   pixCopiaCola?: string;
   pixQrCodeBase64?: string;
   boletoUrl?: string;
+  /** 'PIX' quando esta cobrança nasceu do fallback automático Pix→boleto. */
+  fallbackDe?: string;
 }
 
 interface Contrato {
@@ -1168,6 +1170,13 @@ export function NovaProtecao() {
         {/* ---------------- Etapa 4: pagamento ---------------- */}
         {etapa === 'pagamento' && contrato && (
           <div className="flex flex-col gap-5">
+            {contrato.checkout?.fallbackDe === 'PIX' && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                ⏰ O Pix não foi pago a tempo — geramos um <strong>boleto</strong> automaticamente e
+                enviamos o link no WhatsApp do cliente. Pela página do boleto ele também pode pagar
+                com Pix ou cartão.
+              </div>
+            )}
             <section className="card text-center">
               <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500">
                 {contrato.formaPagamento === 'PIX' ? 'Pague com Pix' : 'Pagamento'}
@@ -1191,6 +1200,13 @@ export function NovaProtecao() {
                 >
                   📋 Copiar código Pix (copia e cola)
                 </button>
+              )}
+
+              {contrato.formaPagamento === 'PIX' && (
+                <p className="mb-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                  💡 O cliente pode <strong>parcelar este Pix</strong> pelo app do banco dele
+                  (Nubank, Mercado Pago, PicPay e outros) — a loja recebe à vista normalmente.
+                </p>
               )}
 
               {contrato.checkout?.linkPagamento && contrato.formaPagamento !== 'PIX' && (
