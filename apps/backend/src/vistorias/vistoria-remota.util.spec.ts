@@ -254,6 +254,13 @@ describe('vistoria remota — OCR do IMEI', () => {
     expect(extrairImeisDeTexto(texto)).toEqual(['350147160259436', '350147160259444']);
   });
 
+  it('dois IMEIs em linhas seguidas não se fundem num número só', () => {
+    expect(extrairImeisDeTexto('350147160259436\n350147160259444')).toEqual([
+      '350147160259436',
+      '350147160259444',
+    ]);
+  });
+
   it('ignora sequências curtas/longas demais e deduplica', () => {
     expect(extrairImeisDeTexto('123456 e 350147160259436 e 350147160259436')).toEqual([
       '350147160259436',

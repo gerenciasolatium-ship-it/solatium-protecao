@@ -57,8 +57,7 @@ export class GeminiOcrProvider implements OcrProvider {
         return { disponivel: false, imeis: [] };
       }
       const json = (await resposta.json()) as GeminiResponse;
-      const texto =
-        json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('\n') ?? '';
+      const texto = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('\n') ?? '';
       return { disponivel: true, imeis: extrairImeisDeTexto(texto) };
     } catch (erro) {
       this.logger.warn(`OCR IMEI indisponível: ${erro}`);

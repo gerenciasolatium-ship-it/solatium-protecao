@@ -218,7 +218,11 @@ export function conferirDispositivo(
   if (ident.plataforma === 'Android' && !ehApple) {
     const marcaSegurada = marcaSeguradaConhecida(aparelho);
     const marcasDoDispositivo = marcasDoModeloAndroid(ident.modelo);
-    if (marcaSegurada && marcasDoDispositivo.length && !marcasDoDispositivo.includes(marcaSegurada)) {
+    if (
+      marcaSegurada &&
+      marcasDoDispositivo.length &&
+      !marcasDoDispositivo.includes(marcaSegurada)
+    ) {
       return {
         compativel: false,
         motivo: `aparelho segurado é ${aparelho.marca} ${aparelho.modelo}, mas a vistoria foi feita de um ${ident.modelo} (${marcasDoDispositivo.join('/')})`,
@@ -248,8 +252,7 @@ export function distanciaMetros(
   const dLat = rad(b.lat - a.lat);
   const dLng = rad(b.lng - a.lng);
   const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+    Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return Math.round(2 * R * Math.asin(Math.sqrt(h)));
 }
 
@@ -288,13 +291,19 @@ export function conferirGeolocalizacao(
 // OCR do IMEI: o que a foto do *#06# mostra tem que bater com o cadastrado.
 // ---------------------------------------------------------------------------
 
-/** Extrai candidatos a IMEI (14–16 dígitos) de um texto livre vindo do OCR. */
+/**
+ * Extrai candidatos a IMEI (14–16 dígitos) de um texto livre vindo do OCR.
+ * Quebra de linha separa IMEIs (dual-SIM vem um por linha na tela do *#06#);
+ * espaço/ponto/traço DENTRO da linha são separadores de leitura ("35 014716…").
+ */
 export function extrairImeisDeTexto(texto: string): string[] {
-  const achados = texto.replace(/[\s.\-–]/g, ' ').match(/\d[\d ]{12,20}\d/g) ?? [];
   const imeis = new Set<string>();
-  for (const bruto of achados) {
-    const digitos = bruto.replace(/\D/g, '');
-    if (digitos.length >= 14 && digitos.length <= 16) imeis.add(digitos);
+  for (const linha of texto.split(/[\r\n]+/)) {
+    const achados = linha.replace(/[.\-–]/g, ' ').match(/\d[\d ]{12,20}\d/g) ?? [];
+    for (const bruto of achados) {
+      const digitos = bruto.replace(/\D/g, '');
+      if (digitos.length >= 14 && digitos.length <= 16) imeis.add(digitos);
+    }
   }
   return [...imeis];
 }
